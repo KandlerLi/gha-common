@@ -13,7 +13,7 @@ name: Terraform apply
 #     packages: write # build-image needs write, not read -- see README.md
 #   jobs:
 #     terraform:
-#       uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.6
+#       uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.7
 #       with:
 #         aws_region: eu-central-1
 #         extra_repo_vars: "ROUTE53_ZONE_ID"       # optional, space-separated
@@ -42,9 +42,8 @@ on:
         default: ""
       extra_validate_command:
         description: >-
-          Extra shell command run alongside terraform fmt/validate in the
-          apply job's own "Run checks" step (e.g. a repo's own unit test
-          suite).
+          Extra shell command run in its own step right after terraform
+          fmt/validate (e.g. a repo's own unit test suite).
         type: string
         default: ""
       post_apply_command:
@@ -77,7 +76,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: KandlerLi/gha-common
-          ref: v0.0.6
+          ref: v0.0.7
           path: gha-common
 
       - name: Log in to GHCR
@@ -173,9 +172,19 @@ jobs:
         run: |
           terraform fmt -check -recursive
           terraform validate
-          if [ -n "${{ inputs.extra_validate_command }}" ]; then
-            ${{ inputs.extra_validate_command }}
-          fi
+
+      # A step-level if:, not a shell-level check inside "Run checks" --
+      # matches terraform-checks.yml's own "Run extra validate command"
+      # step. The shell-level version this replaced rendered as
+      # `if [ -n "" ]; then<newline><newline>fi` whenever
+      # extra_validate_command was empty (the common case: every caller
+      # except dyndns) -- an empty then-block, which is a POSIX sh syntax
+      # error ("fi" unexpected), not a false condition. Found live
+      # (2026-09-03) failing aws-budget's very first real Apply run on
+      # main, right after its migration PR merged.
+      - name: Run extra validate command
+        if: inputs.extra_validate_command != ''
+        run: ${{ inputs.extra_validate_command }}
 
       - name: Create saved plan
         run: terraform plan -input=false -out=tfplan
