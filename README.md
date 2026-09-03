@@ -84,7 +84,13 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      packages: read
+      # A caller's job-level permissions cap every nested job inside the
+      # reusable workflow -- must cover the union of what any of them
+      # ask for. build-image needs write (it pushes to GHCR); the
+      # narrower validate/plan jobs still only get what they themselves
+      # request internally. packages: read here fails with "requesting
+      # 'packages: write', but is only allowed 'packages: read'".
+      packages: write
 ```
 
 ## `.github/workflows/terraform-apply.yml`
@@ -111,6 +117,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write # see terraform-checks.yml's caller shape for why
 concurrency:
   group: <repo-name>-terraform
   cancel-in-progress: false
