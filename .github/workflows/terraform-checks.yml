@@ -5,7 +5,7 @@ name: Terraform checks
 #
 #   jobs:
 #     terraform:
-#       uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v1
+#       uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.2
 #       with:
 #         aws_region: eu-central-1
 #         extra_repo_vars: "ROUTE53_ZONE_ID"       # optional, space-separated
@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: KandlerLi/gha-common
-          ref: v1
+          ref: v0.0.2
           path: gha-common
 
       - name: Log in to GHCR
