@@ -22,22 +22,24 @@ public. All five current callers are public already.
 
 ## Versioning
 
-Callers pin a specific tag (`@v1`), never `@main` — matches this
+Callers pin a specific semver tag (`@v0.0.2`), never `@main` — matches this
 workspace's existing discipline of pinning third-party GitHub Actions by
 exact version (`sha_pinning_required = true` in every managed repo's
 `github_actions_repository_permissions`), applied here to a first-party
 repo too. A bad edit to `gha-common` can't silently break every caller's CI
 at once; each repo adopts a new tag deliberately, in its own commit.
 
-To cut a new tag after a change here:
+To cut a new tag after a change here (never amend or force-push an
+existing one, even a very recent or still-unadopted tag — always a new,
+additive tag):
 
 ```bash
-git tag v2
-git push origin v2
+git tag v0.0.3
+git push origin v0.0.3
 ```
 
-Then bump the `@v1` → `@v2` reference in whichever caller repo(s) should
-pick it up, one repo/commit at a time.
+Then bump the `@v0.0.2` → `@v0.0.3` reference in whichever caller repo(s)
+should pick it up, one repo/commit at a time.
 
 ## `ci/Dockerfile`
 
@@ -74,7 +76,7 @@ on:
   workflow_dispatch:
 jobs:
   terraform:
-    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v1
+    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.2
     with:
       aws_region: eu-central-1
       extra_repo_vars: "ROUTE53_ZONE_ID"
@@ -114,7 +116,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   terraform:
-    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v1
+    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.2
     with:
       aws_region: eu-central-1
       extra_repo_vars: "ROUTE53_ZONE_ID"
