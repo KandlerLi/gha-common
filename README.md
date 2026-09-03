@@ -22,7 +22,7 @@ public. All five current callers are public already.
 
 ## Versioning
 
-Callers pin a specific semver tag (`@v0.0.6`), never `@main` — matches this
+Callers pin a specific semver tag (`@v0.0.7`), never `@main` — matches this
 workspace's existing discipline of pinning third-party GitHub Actions by
 exact version (`sha_pinning_required = true` in every managed repo's
 `github_actions_repository_permissions`), applied here to a first-party
@@ -34,11 +34,11 @@ existing one, even a very recent or still-unadopted tag — always a new,
 additive tag):
 
 ```bash
-git tag v0.0.7
-git push origin v0.0.7
+git tag v0.0.8
+git push origin v0.0.8
 ```
 
-Then bump the `@v0.0.6` → `@v0.0.7` reference in whichever caller repo(s)
+Then bump the `@v0.0.7` → `@v0.0.8` reference in whichever caller repo(s)
 should pick it up, one repo/commit at a time.
 
 ## `ci/Dockerfile`
@@ -76,7 +76,7 @@ on:
   workflow_dispatch:
 jobs:
   terraform:
-    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.6
+    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.7
     with:
       aws_region: eu-central-1
       extra_repo_vars: "ROUTE53_ZONE_ID"
@@ -123,7 +123,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   terraform:
-    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.6
+    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.7
     with:
       aws_region: eu-central-1
       extra_repo_vars: "ROUTE53_ZONE_ID"
