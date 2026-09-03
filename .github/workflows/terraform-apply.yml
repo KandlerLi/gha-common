@@ -10,6 +10,7 @@ name: Terraform apply
 #   permissions:
 #     contents: read
 #     id-token: write
+#     packages: write # build-image needs write, not read -- see README.md
 #   jobs:
 #     terraform:
 #       uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.2

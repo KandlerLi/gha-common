@@ -14,7 +14,7 @@ name: Terraform checks
 #       permissions:
 #         contents: read
 #         id-token: write
-#         packages: read
+#         packages: write # build-image needs write, not read -- see README.md
 #
 # See README.md for the full input reference.
 
