@@ -15,6 +15,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        jq \
         python3 \
         unzip \
     && rm -rf /var/lib/apt/lists/* \
