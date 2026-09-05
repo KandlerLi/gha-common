@@ -8,7 +8,7 @@ to carry its own near-identical `checks.yml`/`apply.yml`/`.github/ci/Dockerfile`
 a consumer of this repo.
 
 This repo has no CI of its own (no `runner: true`/`action_variables`/
-`required_status_check_contexts` entry in `bootstrap/repo-infra/config.yml`)
+`required_status_check_contexts` entry in `github/repo-infra/config.yml`)
 — nothing ever runs *in* `gha-common` itself. A caller's `uses:` job runs
 under that caller's own repository context (its own self-hosted runner
 registration, its own `vars.*`/`secrets.*`), the reusable workflow file
