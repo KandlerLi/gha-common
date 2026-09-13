@@ -1,11 +1,19 @@
 # gha-common
 
-Shared CI Dockerfile and two `workflow_call` reusable GitHub Actions
+Shared CI Dockerfile and three `workflow_call` reusable GitHub Actions
 workflows, used by every Terraform-based repo in this workspace that used
 to carry its own near-identical `checks.yml`/`apply.yml`/`.github/ci/Dockerfile`
 (`dyndns`, `website`, `aws-budget`, `homeserver-health-check`, `ses-relay`).
 `home-infra` is a fundamentally different, Ansible-based pipeline and isn't
-a consumer of this repo.
+a consumer of the Terraform-specific workflows below (though it can still
+call `trivy-config.yml`, which has no Terraform dependency).
+
+`trivy-config.yml` is additionally called by `repo-infra`, `terraform-state`,
+and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
+runner at all -- with `runs_on` overridden to a GitHub-hosted runner, so
+adopting it doesn't require provisioning a self-hosted runner for them. See
+that workflow's own inline comments and the workspace-level `PARKED.md`
+"Security audit" entry for the reasoning.
 
 This repo has no CI of its own (no `runner: true`/`action_variables`/
 `required_status_check_contexts` entry in `github/repo-infra/config.yml`)
@@ -132,3 +140,52 @@ jobs:
 
 `concurrency` stays declared in the caller — `workflow_call` doesn't carry
 concurrency settings through from the reusable workflow itself.
+
+## `.github/workflows/trivy-config.yml`
+
+Non-blocking `trivy config` IaC misconfiguration scan — no Docker image
+build, no AWS credentials, findings only ever land in the job summary
+(`exit-code: "0"`, so a finding can never fail the job or block anything
+downstream). Its own workflow rather than a job folded into the two above,
+specifically so it stays structurally incapable of blocking a plan/apply.
+
+Inputs:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+
+Caller shape (typical — self-hosted runner, one of the repos that already
+has one registered):
+
+```yaml
+name: Security scan
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  trivy-config:
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.8
+    permissions:
+      contents: read
+```
+
+Caller shape (`repo-infra`/`terraform-state`/`k3s-bootstrap` — no
+self-hosted runner registered for these, deliberately not provisioning one
+just for a read-only scan):
+
+```yaml
+name: Security scan
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  trivy-config:
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.8
+    with:
+      runs_on: '["ubuntu-latest"]'
+    permissions:
+      contents: read
+```

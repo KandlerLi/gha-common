@@ -1,0 +1,61 @@
+name: Trivy config scan
+
+# Reusable workflow_call counterpart for a non-blocking IaC misconfiguration
+# scan (the first, narrow step of the "Security audit" plan in the
+# workspace-level PARKED.md -- trivy config only, not yet trivy image/fs),
+# called via:
+#
+#   jobs:
+#     trivy-config:
+#       uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.8
+#       permissions:
+#         contents: read
+#
+# Deliberately its own workflow, not folded into terraform-checks.yml/
+# terraform-apply.yml -- keeps this scan structurally non-blocking (a
+# finding here can never fail the existing plan/apply jobs, since it's a
+# wholly separate workflow run) without scattering continue-on-error
+# through those.
+#
+# runs_on defaults to this workspace's usual self-hosted runner; the three
+# repos that deliberately have no self-hosted runner registered at all
+# (repo-infra, terraform-state, k3s-bootstrap -- see their own
+# branch_protection_enabled: false / "never CI" convention) override it to
+# a GitHub-hosted runner instead of getting one provisioned for them.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: >-
+          JSON array of runner labels, e.g. '["ubuntu-latest"]'. Defaults to
+          this workspace's usual self-hosted runner.
+        type: string
+        default: '["self-hosted", "home", "debian"]'
+
+jobs:
+  trivy-config:
+    name: Trivy config scan
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run trivy config
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          output: trivy-config-report.txt
+          # Informational only, never blocks -- see PARKED.md's "Security
+          # audit" entry for why this is deliberately the narrow first step.
+          exit-code: "0"
+
+      - name: Publish findings to job summary
+        if: always()
+        run: cat trivy-config-report.txt >> "$GITHUB_STEP_SUMMARY"
