@@ -1,21 +1,23 @@
 name: Trivy config scan
 
-# Reusable workflow_call counterpart for a non-blocking IaC misconfiguration
-# scan (the first, narrow step of the "Security audit" plan in the
-# workspace-level PARKED.md -- trivy config only, not yet trivy image/fs),
-# called via:
+# Reusable workflow_call counterpart for an IaC misconfiguration scan (the
+# first, narrow step of the "Security audit" plan in the workspace-level
+# PARKED.md -- trivy config only, not yet trivy image/fs), called via:
 #
 #   jobs:
 #     trivy-config:
-#       uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.8
+#       uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
 #       permissions:
 #         contents: read
 #
 # Deliberately its own workflow, not folded into terraform-checks.yml/
-# terraform-apply.yml -- keeps this scan structurally non-blocking (a
-# finding here can never fail the existing plan/apply jobs, since it's a
-# wholly separate workflow run) without scattering continue-on-error
-# through those.
+# terraform-apply.yml -- this job fails on any finding (exit-code: "1"
+# below, including Low severity), but since it's a wholly separate
+# workflow run from plan/apply, that failure is structurally incapable of
+# blocking a plan/apply -- it's visible (a red check on the commit), not a
+# gate. Making it an actual gate would mean either a `needs:` dependency
+# from apply's own job or adding it to branch protection's required status
+# checks, neither of which this does.
 #
 # runs_on defaults to this workspace's usual self-hosted runner; the three
 # repos that deliberately have no self-hosted runner registered at all
@@ -52,9 +54,9 @@ jobs:
           scan-ref: .
           format: table
           output: trivy-config-report.txt
-          # Informational only, never blocks -- see PARKED.md's "Security
-          # audit" entry for why this is deliberately the narrow first step.
-          exit-code: "0"
+          # Fails the job on any finding, including Low -- see this file's
+          # own header comment for why that still can't block a plan/apply.
+          exit-code: "1"
 
       - name: Publish findings to job summary
         if: always()
