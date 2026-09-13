@@ -143,11 +143,14 @@ concurrency settings through from the reusable workflow itself.
 
 ## `.github/workflows/trivy-config.yml`
 
-Non-blocking `trivy config` IaC misconfiguration scan — no Docker image
-build, no AWS credentials, findings only ever land in the job summary
-(`exit-code: "0"`, so a finding can never fail the job or block anything
-downstream). Its own workflow rather than a job folded into the two above,
-specifically so it stays structurally incapable of blocking a plan/apply.
+`trivy config` IaC misconfiguration scan — no Docker image build, no AWS
+credentials, findings land in the job summary. Fails the job on any
+finding, including Low severity (`exit-code: "1"`). Its own workflow
+rather than a job folded into the two above, specifically so that failure
+stays structurally incapable of blocking a plan/apply — it's a visible red
+check on the commit, not a gate; making it an actual gate would need a
+`needs:` dependency from apply's own job or a branch-protection required
+status check, neither of which this does.
 
 Inputs:
 
@@ -166,7 +169,7 @@ on:
   workflow_dispatch:
 jobs:
   trivy-config:
-    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.8
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
     permissions:
       contents: read
 ```
@@ -183,7 +186,7 @@ on:
   workflow_dispatch:
 jobs:
   trivy-config:
-    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.8
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
     with:
       runs_on: '["ubuntu-latest"]'
     permissions:
