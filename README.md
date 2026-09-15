@@ -1,12 +1,13 @@
 # gha-common
 
-Shared CI Dockerfile and three `workflow_call` reusable GitHub Actions
+Shared CI Dockerfile and four `workflow_call` reusable GitHub Actions
 workflows, used by every Terraform-based repo in this workspace that used
 to carry its own near-identical `checks.yml`/`apply.yml`/`.github/ci/Dockerfile`
 (`dyndns`, `website`, `aws-budget`, `homeserver-health-check`, `ses-relay`).
 `home-infra` is a fundamentally different, Ansible-based pipeline and isn't
 a consumer of the Terraform-specific workflows below (though it can still
-call `trivy-config.yml`, which has no Terraform dependency).
+call `trivy-config.yml`/`trivy-image.yml`, neither of which has a Terraform
+dependency).
 
 `trivy-config.yml` is additionally called by `repo-infra`, `terraform-state`,
 and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
@@ -14,6 +15,10 @@ runner at all -- with `runs_on` overridden to a GitHub-hosted runner, so
 adopting it doesn't require provisioning a self-hosted runner for them. See
 that workflow's own inline comments and the workspace-level `PARKED.md`
 "Security audit" entry for the reasoning.
+
+`trivy-image.yml` is only called by the repos that actually have pinned
+container images to scan (`home-infra`, `k3s-apps`) -- most repos in this
+workspace are pure Terraform with no image to scan at all.
 
 This repo has no CI of its own (no `runner: true`/`action_variables`/
 `required_status_check_contexts` entry in `github/repo-infra/config.yml`)
@@ -191,4 +196,55 @@ jobs:
       runs_on: '["ubuntu-latest"]'
     permissions:
       contents: read
+```
+
+## `.github/workflows/trivy-image.yml`
+
+`trivy image` container CVE scan, one caller-side matrix entry per pinned
+image -- no Docker image build of its own, no AWS credentials. Unlike
+`trivy-config.yml`, this one is deliberately informational only
+(`exit-code: "0"`): real per-image finding counts run into the hundreds or
+thousands (almost entirely upstream OS/library CVEs in third-party base
+images this workspace doesn't build, not something a required check could
+ever reasonably drive to zero). Findings still land in the job summary, so
+drift over time stays visible even though nothing blocks on it. See the
+workspace-level `PARKED.md` "Security audit" entry for the real counts
+that drove this choice.
+
+Logs in to GHCR with the caller's own `GITHUB_TOKEN` before scanning
+(harmless for a non-GHCR `image_ref`) -- needed for a private package like
+this account's own `home-agent`/`sankey-export` images, since trivy has no
+separate registry-auth input and instead reads the runner's own Docker
+config the same way `checks.yml`/`build-home-agent.yml` already do to
+push. Requires the caller to grant `packages: read`, not just
+`contents: read`.
+
+Inputs:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `image_name` | yes | Short label for the image, shown in the job name and job summary. |
+| `image_ref` | yes | Full image reference, digest-pinned where the caller pins it. |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+
+Caller shape (one job per image, via a matrix):
+
+```yaml
+jobs:
+  trivy-image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: some-image
+            ref: docker.io/some/image:1.2.3@sha256:...
+          - name: another-image
+            ref: ghcr.io/some/other-image:4.5.6@sha256:...
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.10
+    with:
+      image_name: ${{ matrix.name }}
+      image_ref: ${{ matrix.ref }}
+    permissions:
+      contents: read
+      packages: read
 ```
