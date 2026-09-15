@@ -1,0 +1,19 @@
+name: Security scan
+
+# Git-history secret scan -- the workspace-level security audit's
+# gitleaks leg (PARKED.md). This repo has no Terraform and no container
+# images, so trivy config/image don't apply here -- gitleaks is this
+# repo's only entry into the audit. See gha-common's own README.md for
+# the reusable workflow's full details.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  gitleaks:
+    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.12
+    permissions:
+      contents: read

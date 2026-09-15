@@ -24,12 +24,15 @@ workspace are pure Terraform with no image to scan at all.
 `docs/` repos and the GitHub profile README -- unlike the other two, a
 secrets scan has no reason to exclude any repo by content type.
 
-This repo has no CI of its own (no `runner: true`/`action_variables`/
-`required_status_check_contexts` entry in `github/repo-infra/config.yml`)
-— nothing ever runs *in* `gha-common` itself. A caller's `uses:` job runs
-under that caller's own repository context (its own self-hosted runner
+This repo has no build/apply CI of its own (no `runner: true`/
+`action_variables`/`required_status_check_contexts` entry in
+`github/repo-infra/config.yml`) — a caller's `uses:` job runs under that
+caller's own repository context (its own self-hosted runner
 registration, its own `vars.*`/`secrets.*`), the reusable workflow file
-just supplies the shared YAML.
+just supplies the shared YAML. It does still call its own `gitleaks.yml`
+on itself (`.github/workflows/security-scan.yml`) -- that reasoning
+doesn't apply to a secrets scan, which needs no build/apply pipeline to
+make sense, and this repo is public like every other repo in the audit.
 
 ## Why this repo is public
 
