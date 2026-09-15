@@ -76,12 +76,16 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ inputs.gitleaks_version }}"
-          curl -fsSL -o gitleaks.tar.gz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          # Must save under this exact filename -- sha256sum -c matches
+          # against the filename embedded in checksums.txt, not whatever
+          # name we choose for the download.
+          curl -fsSL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
           curl -fsSL -o checksums.txt \
             "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_checksums.txt"
-          grep "gitleaks_${version}_linux_x64.tar.gz" checksums.txt | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks
+          grep "$archive" checksums.txt | sha256sum -c -
+          tar -xzf "$archive" gitleaks
           chmod +x gitleaks
 
       - name: Run gitleaks
