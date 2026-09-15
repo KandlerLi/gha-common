@@ -1,0 +1,110 @@
+name: Gitleaks secret scan
+
+# Reusable workflow_call counterpart for a git-history secrets scan --
+# the third and last step of the "Security audit" plan in the
+# workspace-level PARKED.md (trivy config, then trivy image, now this).
+# Uses gitleaks, not `trivy fs`: confirmed live (2026-09-15) that
+# `trivy fs` only scans the current checked-out tree, not git history --
+# it found nothing in a test repo with a secret committed and then
+# removed in a later commit, while gitleaks found it immediately. Since
+# the whole point here is catching a secret that was committed and later
+# removed (PARKED.md's own framing), `trivy fs` would be a hollow
+# checkbox for that specific case.
+#
+#   jobs:
+#     gitleaks:
+#       uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.11
+#       permissions:
+#         contents: read
+#
+# Fails on any finding (default gitleaks exit code) -- unlike
+# trivy-image.yml, real finding counts here are small and fully within
+# this workspace's own control (2 of 15 repos had any finding at all in
+# the initial rollout, both confirmed false positives and allowlisted
+# via .gitleaksignore, see PARKED.md), so there's no equivalent of
+# trivy-image's uncontrollable third-party CVE volume to justify staying
+# informational-only.
+#
+# Needs `fetch-depth: 0` on checkout -- GitHub Actions' default shallow
+# clone (depth 1) would defeat the whole point, same as `trivy fs` would.
+#
+# No AWS credentials, no in-cluster access, no local network at all
+# (pure offline git-history scan) -- runs on a GitHub-hosted runner by
+# default, unlike trivy-config.yml/trivy-image.yml's self-hosted
+# default, since there's no reason to ever provision this on the
+# self-hosted runner in the first place (that runner-serialization
+# lesson from PARKED.md's own history, applied from day one here instead
+# of retrofitted later).
+#
+# gitleaks binary is downloaded and checksum-verified directly (not the
+# official gitleaks/gitleaks-action), same pattern as ci/Dockerfile's
+# own Terraform pin -- avoids depending on that Action's licensing terms
+# for org accounts (irrelevant to this personal-account workspace, but
+# simpler to just not depend on it) and avoids adding another entry to
+# every repo's transitive Actions allowlist.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: >-
+          JSON array of runner labels, e.g.
+          '["self-hosted", "home", "debian"]'. Defaults to a GitHub-hosted
+          runner -- see this file's own header comment for why.
+        type: string
+        default: '["ubuntu-latest"]'
+      gitleaks_version:
+        description: Pinned gitleaks release version (without the "v" prefix).
+        type: string
+        default: "8.30.1"
+
+jobs:
+  gitleaks:
+    name: Gitleaks secret scan
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository (full history)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Download and verify gitleaks
+        run: |
+          set -euo pipefail
+          version="${{ inputs.gitleaks_version }}"
+          curl -fsSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
+          curl -fsSL -o checksums.txt \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_checksums.txt"
+          grep "gitleaks_${version}_linux_x64.tar.gz" checksums.txt | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Run gitleaks
+        id: gitleaks
+        run: |
+          set +e
+          ./gitleaks detect --source . --no-banner --no-color \
+            --report-format json --report-path gitleaks-report.json \
+            --redact
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Publish findings to job summary
+        if: always()
+        run: |
+          if [ -s gitleaks-report.json ] && [ "$(cat gitleaks-report.json)" != "[]" ]; then
+            echo "### Gitleaks findings" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat gitleaks-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Gitleaks findings: none" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fail if leaks were found
+        if: steps.gitleaks.outputs.exit_code != '0'
+        run: exit 1

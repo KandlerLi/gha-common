@@ -1,13 +1,13 @@
 # gha-common
 
-Shared CI Dockerfile and four `workflow_call` reusable GitHub Actions
+Shared CI Dockerfile and five `workflow_call` reusable GitHub Actions
 workflows, used by every Terraform-based repo in this workspace that used
 to carry its own near-identical `checks.yml`/`apply.yml`/`.github/ci/Dockerfile`
 (`dyndns`, `website`, `aws-budget`, `homeserver-health-check`, `ses-relay`).
 `home-infra` is a fundamentally different, Ansible-based pipeline and isn't
 a consumer of the Terraform-specific workflows below (though it can still
-call `trivy-config.yml`/`trivy-image.yml`, neither of which has a Terraform
-dependency).
+call `trivy-config.yml`/`trivy-image.yml`/`gitleaks.yml`, none of which has
+a Terraform dependency).
 
 `trivy-config.yml` is additionally called by `repo-infra`, `terraform-state`,
 and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
@@ -19,6 +19,10 @@ that workflow's own inline comments and the workspace-level `PARKED.md`
 `trivy-image.yml` is only called by the repos that actually have pinned
 container images to scan (`home-infra`, `k3s-apps`) -- most repos in this
 workspace are pure Terraform with no image to scan at all.
+
+`gitleaks.yml` is called by every repo in the workspace, including the two
+`docs/` repos and the GitHub profile README -- unlike the other two, a
+secrets scan has no reason to exclude any repo by content type.
 
 This repo has no CI of its own (no `runner: true`/`action_variables`/
 `required_status_check_contexts` entry in `github/repo-infra/config.yml`)
@@ -247,4 +251,49 @@ jobs:
     permissions:
       contents: read
       packages: read
+```
+
+## `.github/workflows/gitleaks.yml`
+
+Git-history secret scan -- the third and last step of the workspace-level
+"Security audit" plan (`PARKED.md`). Uses `gitleaks`, not `trivy fs`:
+confirmed live (2026-09-15) that `trivy fs` only scans the current
+checked-out tree, not git history, which makes it blind to exactly the
+case this scan exists for -- a secret committed and later removed.
+Checks out with `fetch-depth: 0` (a normal shallow clone would be just as
+blind). Downloads and checksum-verifies the `gitleaks` binary directly
+rather than using the official `gitleaks/gitleaks-action`, matching
+`ci/Dockerfile`'s own Terraform-pinning convention -- avoids depending on
+that Action's org-account licensing terms and avoids one more entry in
+every repo's transitive Actions allowlist.
+
+Fails on any finding (gitleaks' own default exit code) -- unlike
+`trivy-image.yml`, real finding counts here are small and fully within
+this workspace's own control (2 of 15 repos had any finding at all in the
+initial rollout, both confirmed false positives and allowlisted via each
+repo's own `.gitleaksignore`), so there's no equivalent of
+`trivy-image.yml`'s uncontrollable third-party CVE volume to justify
+staying informational-only.
+
+Inputs:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`) -- unlike the two workflows above, there's no reason to ever run this on the self-hosted runner (no AWS credentials, no in-cluster access, no local network at all). |
+| `gitleaks_version` | no | Pinned gitleaks release version, without the `v` prefix. Defaults to `"8.30.1"`. |
+
+Caller shape:
+
+```yaml
+name: Security scan
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  gitleaks:
+    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.11
+    permissions:
+      contents: read
 ```
