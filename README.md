@@ -79,6 +79,16 @@ never forks. Mirrors `dyndns`'s original `checks.yml` almost exactly; see
 that workflow's own inline comments for the reasoning behind each step
 (the OIDC `action-timeout-s` mitigation in particular).
 
+Both the `validate` and `plan` jobs bind-mount `/terraform-plugin-cache`
+from the self-hosted runner's own host into the container job and set
+`TF_PLUGIN_CACHE_DIR` to it, so `terraform init` reuses providers already
+downloaded on this node instead of fetching them cold on every ephemeral
+runner Pod. This assumes that path exists on the runner host — provisioned
+by `k3s-bootstrap`'s `modules/github_runner`, not by this repo — so this
+workflow only ever runs correctly against that self-hosted runner, never a
+`runs_on`-overridden GitHub-hosted one (not offered as an input here for
+that reason).
+
 Inputs:
 
 | Input | Required | Description |

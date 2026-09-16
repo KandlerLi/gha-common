@@ -100,7 +100,17 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
+      # The -v bind-mounts the runner Pod's own host_path-backed
+      # terraform-plugin-cache volume (k3s-bootstrap's
+      # modules/github_runner) into this nested container job, so
+      # `terraform init` below reuses providers already downloaded by an
+      # earlier job/run on this same node instead of fetching them cold
+      # on every ephemeral runner Pod.
+      options: >-
+        --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
+        -v /terraform-plugin-cache:/terraform-plugin-cache
+    env:
+      TF_PLUGIN_CACHE_DIR: /terraform-plugin-cache
 
     steps:
       - name: Check out repository
@@ -136,7 +146,10 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
+      # See the validate job's own identical option for why.
+      options: >-
+        --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
+        -v /terraform-plugin-cache:/terraform-plugin-cache
     permissions:
       contents: read
       id-token: write
@@ -145,6 +158,7 @@ jobs:
       AWS_REGION: ${{ inputs.aws_region }}
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
+      TF_PLUGIN_CACHE_DIR: /terraform-plugin-cache
 
     steps:
       - name: Check out repository
