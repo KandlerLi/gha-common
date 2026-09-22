@@ -57,47 +57,10 @@ on:
 jobs:
   build-image:
     name: Build CI image
-    runs-on: [self-hosted, home, debian]
-    timeout-minutes: 10
+    uses: ./.github/workflows/build-ci-image.yml
     permissions:
       contents: read
       packages: write
-    outputs:
-      uid: ${{ steps.whoami.outputs.uid }}
-      gid: ${{ steps.whoami.outputs.gid }}
-
-    steps:
-      - name: Check out calling repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      # See terraform-checks.yml's own identical step for why ref is
-      # hardcoded here rather than resolved from the caller's own @tag.
-      - name: Check out gha-common
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: KandlerLi/gha-common
-          ref: v0.0.7
-          path: gha-common
-
-      - name: Log in to GHCR
-        run: >-
-          echo "${{ secrets.GITHUB_TOKEN }}"
-          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Build CI image
-        run: >-
-          docker build
-          -t ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
-          gha-common/ci
-
-      - name: Push CI image
-        run: docker push ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
-
-      - name: Determine service account identity
-        id: whoami
-        run: |
-          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
-          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
 
   apply:
     name: Plan and apply
@@ -147,22 +110,26 @@ jobs:
             exit 1
           fi
 
+      # Only for ci/export-repo-vars.sh below -- ref hardcoded for the same
+      # reason as build-ci-image.yml's own identical checkout step.
+      - name: Check out gha-common
+        if: inputs.extra_repo_vars != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: KandlerLi/gha-common
+          ref: v0.0.7
+          path: gha-common
+
       # See terraform-checks.yml's own identical step for why this is
       # data-driven rather than hardcoding each repo's own variable names.
+      # Implementation lives in ci/export-repo-vars.sh (extracted
+      # 2026-09-22, ponytail-audit -- this was a byte-identical inline loop
+      # here and in terraform-checks.yml).
       - name: Export and verify extra repository variables
         if: inputs.extra_repo_vars != ''
         env:
           ALL_VARS_JSON: ${{ toJSON(vars) }}
-        run: |
-          for name in ${{ inputs.extra_repo_vars }}; do
-            value="$(echo "$ALL_VARS_JSON" | jq -r --arg k "$name" '.[$k] // empty')"
-            if [ -z "$value" ]; then
-              echo "::error::Missing repository variable $name"
-              exit 1
-            fi
-            lower="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
-            echo "TF_VAR_${lower}=${value}" >> "$GITHUB_ENV"
-          done
+        run: gha-common/ci/export-repo-vars.sh ${{ inputs.extra_repo_vars }}
 
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
