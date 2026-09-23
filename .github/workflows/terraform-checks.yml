@@ -15,6 +15,7 @@ name: Terraform checks
 #         contents: read
 #         id-token: write
 #         packages: write # build-image needs write, not read -- see README.md
+#         pull-requests: write # plan's own PR-comment step needs this
 #
 # See README.md for the full input reference.
 
@@ -114,6 +115,11 @@ jobs:
       contents: read
       id-token: write
       packages: read
+      # Needed by the "Post plan to pull request" step below. Every
+      # caller must grant this too -- a reusable workflow's own job
+      # permissions are capped at whatever the caller job itself
+      # declares, never wider.
+      pull-requests: write
     env:
       AWS_REGION: ${{ inputs.aws_region }}
       TF_IN_AUTOMATION: "true"
@@ -179,7 +185,54 @@ jobs:
         run: terraform init -input=false
 
       - name: Create speculative plan
-        run: terraform plan -input=false -lock=false -no-color
+        run: |
+          set -o pipefail
+          terraform plan -input=false -lock=false -no-color | tee plan_output.txt
+
+      # Wrapped in a ```diff fence, not posted raw -- GitHub's Markdown
+      # renderer colors +/- lines the same way it would a real diff,
+      # which is the closest a PR comment can get to terraform plan's
+      # own colored-terminal output without embedding raw ANSI escapes
+      # (which render as garbage in a comment body, not color). Finds
+      # and edits this job's own prior comment on repeat pushes to the
+      # same PR instead of appending a new one every time.
+      - name: Post plan to pull request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- gha-common-terraform-plan -->';
+            const maxBodyLen = 60000;
+
+            let plan = fs.readFileSync('plan_output.txt', 'utf8');
+            if (plan.length > maxBodyLen) {
+              plan = plan.slice(0, maxBodyLen) + '\n... (truncated)';
+            }
+            const body = `${marker}\n### Terraform plan\n\`\`\`diff\n${plan}\n\`\`\``;
+
+            const pull_number = context.payload.pull_request.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pull_number,
+            });
+            const existing = comments.find((c) => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull_number,
+                body,
+              });
+            }
 
       - name: Fix workspace permissions for the next job
         if: always()
