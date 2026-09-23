@@ -65,10 +65,35 @@ should pick it up, one repo/commit at a time.
 
 Terraform plus the handful of extra tools every caller's workflows need
 (`awscli`, `git`, `python3`, `unzip`). Built and pushed fresh on every
-workflow run (`ghcr.io/kandlerli/<calling-repo-name>-ci:latest`) by the
-`build-image` job in either reusable workflow below — that job checks out
-both the calling repo (for everything else) and this repo (just for the
-Dockerfile, at a hardcoded `ref:` bumped by hand alongside any new tag).
+workflow run (`ghcr.io/kandlerli/<calling-repo-name>-ci:latest`) by
+`build-ci-image.yml`'s own `build-image` job, which both reusable
+workflows below call — that job checks out both the calling repo (for
+everything else) and this repo (just for the Dockerfile, at a hardcoded
+`ref:` bumped by hand alongside any new tag).
+
+## `.github/workflows/build-ci-image.yml`
+
+Nested reusable workflow (extracted 2026-09-22, ponytail-audit):
+`terraform-checks.yml` and `terraform-apply.yml` both used to carry a
+byte-identical copy of this job. Takes no inputs -- everything it needs
+(`github.event.repository.name`, `github.actor`) is ambient workflow
+context, unaffected by nesting -- and returns `uid`/`gid` outputs for the
+container `options: --user` settings both callers' own later jobs use.
+Called via a relative path (`uses: ./.github/workflows/build-ci-image.yml`),
+which GitHub resolves against the same ref the outer reusable workflow was
+checked out at -- so bumping a caller's `@v0.0.X` pin picks up this file's
+own content at that same tag automatically; only its own hardcoded
+Dockerfile-checkout `ref:` needs a separate manual bump.
+
+## `ci/export-repo-vars.sh`
+
+Shared implementation of the "Export and verify extra repository
+variables" step both reusable workflows below call (same
+extraction, same reason, as `build-ci-image.yml` above). `$ALL_VARS_JSON`
+stays a real GitHub Actions expression in the calling step's own `env:` --
+the one part no external script can produce -- everything else is plain
+shell; arguments are the space-separated repository-variable names to
+require and export.
 
 ## `.github/workflows/terraform-checks.yml`
 

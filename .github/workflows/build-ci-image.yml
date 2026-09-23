@@ -1,0 +1,74 @@
+name: Build CI image
+
+# Nested reusable workflow: builds and pushes the shared CI image used by
+# terraform-checks.yml's/terraform-apply.yml's own later jobs. Extracted
+# 2026-09-22 (ponytail-audit) -- both of those files had a byte-identical
+# copy of this job. GitHub resolves a relative `uses:` path (like both
+# files' own `./.github/workflows/build-ci-image.yml`) against the same
+# ref the outer reusable workflow was checked out at, so a caller pinning
+# terraform-checks.yml@vX transitively gets this file's own content at
+# that same vX -- no separate version to track, and a future tag bump
+# only means editing the "Check out gha-common" step's own ref in this
+# one file, not two.
+#
+# Takes no inputs: every value the job needs (github.event.repository.name,
+# github.actor) is ambient workflow context, unaffected by nesting.
+
+on:
+  workflow_call:
+    outputs:
+      uid:
+        description: Numeric uid of the container's own service account, for --user options in later jobs.
+        value: ${{ jobs.build-image.outputs.uid }}
+      gid:
+        description: Numeric gid of the container's own service account, for --user options in later jobs.
+        value: ${{ jobs.build-image.outputs.gid }}
+
+jobs:
+  build-image:
+    name: Build CI image
+    runs-on: [self-hosted, home, debian]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      uid: ${{ steps.whoami.outputs.uid }}
+      gid: ${{ steps.whoami.outputs.gid }}
+
+    steps:
+      - name: Check out calling repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Only for the Dockerfile -- the calling repo's own checkout above is
+      # what every other step in the caller workflow actually builds/tests.
+      # ref is hardcoded rather than dynamically resolved from the outer
+      # caller's own @tag, deliberately: bump it by hand alongside this
+      # file's own content whenever a new tag is cut, the same one edit
+      # either way.
+      - name: Check out gha-common
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: KandlerLi/gha-common
+          ref: v0.0.7
+          path: gha-common
+
+      - name: Log in to GHCR
+        run: >-
+          echo "${{ secrets.GITHUB_TOKEN }}"
+          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build CI image
+        run: >-
+          docker build
+          -t ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
+          gha-common/ci
+
+      - name: Push CI image
+        run: docker push ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
+
+      - name: Determine service account identity
+        id: whoami
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
