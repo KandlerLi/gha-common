@@ -1,8 +1,9 @@
 name: Trivy config scan
 
-# Reusable workflow_call counterpart for an IaC misconfiguration scan (the
-# first, narrow step of the "Security audit" plan in the workspace-level
-# PARKED.md -- trivy config only, not yet trivy image/fs), called via:
+# Reusable workflow_call counterpart for an IaC misconfiguration scan --
+# the first stage of a workspace-wide security audit (see
+# docs/home-infra-docs/docs/adr/
+# 0022-trivy-config-scanning-and-public-repo-tradeoff.md), called via:
 #
 #   jobs:
 #     trivy-config:
