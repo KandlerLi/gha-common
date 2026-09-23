@@ -184,13 +184,8 @@ jobs:
 
       # A step-level if:, not a shell-level check inside "Run checks" --
       # matches terraform-checks.yml's own "Run extra validate command"
-      # step. The shell-level version this replaced rendered as
-      # `if [ -n "" ]; then<newline><newline>fi` whenever
-      # extra_validate_command was empty (the common case: every caller
-      # except dyndns) -- an empty then-block, which is a POSIX sh syntax
-      # error ("fi" unexpected), not a false condition. Found live
-      # (2026-09-03) failing aws-budget's very first real Apply run on
-      # main, right after its migration PR merged.
+      # step. See docs/home-infra-ai-context's decisions.md for the
+      # empty-then-block syntax error the shell-level version had.
       - name: Run extra validate command
         if: inputs.extra_validate_command != ''
         run: ${{ inputs.extra_validate_command }}

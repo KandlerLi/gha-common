@@ -1,10 +1,10 @@
 name: Trivy image scan
 
-# Reusable workflow_call counterpart for a container image CVE scan (the
-# second step of the "Security audit" plan in the workspace-level
-# PARKED.md -- trivy config landed first, this is trivy image, trivy fs
-# for secrets still not started), called once per image via a caller-side
-# matrix:
+# Reusable workflow_call counterpart for a container image CVE scan --
+# the second stage of a workspace-wide security audit (see
+# docs/home-infra-docs/docs/adr/
+# 0022-trivy-config-scanning-and-public-repo-tradeoff.md), called once
+# per image via a caller-side matrix:
 #
 #   jobs:
 #     trivy-image:
@@ -25,11 +25,9 @@ name: Trivy image scan
 # trivy-config.yml's fail-on-any-finding stance: real per-image finding
 # counts here run into the hundreds or thousands (almost entirely
 # upstream OS/library CVEs in third-party base images this workspace
-# doesn't build), decided against ever gating a merge on that -- see the
-# "Security audit" PARKED.md entry's trivy-image section for the real
-# counts that drove this choice. Findings still land in the job summary
-# so drift over time (an image sitting on a stale pinned digest for
-# months) stays visible.
+# doesn't build), decided against ever gating a merge on that. Findings
+# still land in the job summary so drift over time (an image sitting on
+# a stale pinned digest for months) stays visible.
 #
 # runs_on defaults to this workspace's usual self-hosted runner, matching
 # trivy-config.yml's own default and each caller's existing convention.

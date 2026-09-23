@@ -1,15 +1,10 @@
 name: Gitleaks secret scan
 
 # Reusable workflow_call counterpart for a git-history secrets scan --
-# the third and last step of the "Security audit" plan in the
-# workspace-level PARKED.md (trivy config, then trivy image, now this).
-# Uses gitleaks, not `trivy fs`: confirmed live (2026-09-15) that
-# `trivy fs` only scans the current checked-out tree, not git history --
-# it found nothing in a test repo with a secret committed and then
-# removed in a later commit, while gitleaks found it immediately. Since
-# the whole point here is catching a secret that was committed and later
-# removed (PARKED.md's own framing), `trivy fs` would be a hollow
-# checkbox for that specific case.
+# the third and last stage of a workspace-wide security audit (trivy
+# config, then trivy image, then this). Uses gitleaks, not `trivy fs`
+# -- see docs/home-infra-docs/docs/adr/
+# 0022-trivy-config-scanning-and-public-repo-tradeoff.md for why.
 #
 #   jobs:
 #     gitleaks:
@@ -20,10 +15,10 @@ name: Gitleaks secret scan
 # Fails on any finding (default gitleaks exit code) -- unlike
 # trivy-image.yml, real finding counts here are small and fully within
 # this workspace's own control (2 of 15 repos had any finding at all in
-# the initial rollout, both confirmed false positives and allowlisted
-# via .gitleaksignore, see PARKED.md), so there's no equivalent of
-# trivy-image's uncontrollable third-party CVE volume to justify staying
-# informational-only.
+# the initial rollout, both confirmed false positives -- see each
+# repo's own .gitleaksignore for the full triage), so there's no
+# equivalent of trivy-image's uncontrollable third-party CVE volume to
+# justify staying informational-only.
 #
 # Needs `fetch-depth: 0` on checkout -- GitHub Actions' default shallow
 # clone (depth 1) would defeat the whole point, same as `trivy fs` would.
@@ -32,9 +27,8 @@ name: Gitleaks secret scan
 # (pure offline git-history scan) -- runs on a GitHub-hosted runner by
 # default, unlike trivy-config.yml/trivy-image.yml's self-hosted
 # default, since there's no reason to ever provision this on the
-# self-hosted runner in the first place (that runner-serialization
-# lesson from PARKED.md's own history, applied from day one here instead
-# of retrofitted later).
+# self-hosted runner (a single, serial, scarce resource) in the first
+# place.
 #
 # gitleaks binary is downloaded and checksum-verified directly (not the
 # official gitleaks/gitleaks-action), same pattern as ci/Dockerfile's

@@ -13,8 +13,8 @@ a Terraform dependency).
 and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
 runner at all -- with `runs_on` overridden to a GitHub-hosted runner, so
 adopting it doesn't require provisioning a self-hosted runner for them. See
-that workflow's own inline comments and the workspace-level `PARKED.md`
-"Security audit" entry for the reasoning.
+`docs/home-infra-docs/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md`
+for the full rollout.
 
 `trivy-image.yml` is only called by the repos that actually have pinned
 container images to scan (`home-infra`, `k3s-apps`) -- most repos in this
@@ -224,9 +224,7 @@ image -- no Docker image build of its own, no AWS credentials. Unlike
 thousands (almost entirely upstream OS/library CVEs in third-party base
 images this workspace doesn't build, not something a required check could
 ever reasonably drive to zero). Findings still land in the job summary, so
-drift over time stays visible even though nothing blocks on it. See the
-workspace-level `PARKED.md` "Security audit" entry for the real counts
-that drove this choice.
+drift over time stays visible even though nothing blocks on it.
 
 Logs in to GHCR with the caller's own `GITHUB_TOKEN` before scanning
 (harmless for a non-GHCR `image_ref`) -- needed for a private package like
@@ -268,11 +266,10 @@ jobs:
 
 ## `.github/workflows/gitleaks.yml`
 
-Git-history secret scan -- the third and last step of the workspace-level
-"Security audit" plan (`PARKED.md`). Uses `gitleaks`, not `trivy fs`:
-confirmed live (2026-09-15) that `trivy fs` only scans the current
-checked-out tree, not git history, which makes it blind to exactly the
-case this scan exists for -- a secret committed and later removed.
+Git-history secret scan -- the third and last stage of a workspace-wide
+security audit. Uses `gitleaks`, not `trivy fs` -- see
+`docs/home-infra-docs/docs/adr/
+0022-trivy-config-scanning-and-public-repo-tradeoff.md` for why.
 Checks out with `fetch-depth: 0` (a normal shallow clone would be just as
 blind). Downloads and checksum-verifies the `gitleaks` binary directly
 rather than using the official `gitleaks/gitleaks-action`, matching

@@ -206,17 +206,9 @@ jobs:
           role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           role-session-name: GitHubPlan-${{ github.run_id }}
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
-          # Confirmed live (2026-08-31, four back-to-back reproductions,
-          # against dyndns before this workflow was centralized): this step
-          # can hang for ~6 minutes on its first getIDToken call, then again
-          # for ~8.5 minutes of silence after credentials succeed, before
-          # GitHub itself cancels the whole job -- matches
-          # aws-actions/configure-aws-credentials#1305, a self-hosted-
-          # runner-plus-container-job OIDC connection issue the maintainers
-          # never root-caused, only added this escape hatch for. Doesn't
-          # fix the underlying flakiness, but turns a silent ~15-minute
-          # hang into a fast, clear failure -- now applies to every caller
-          # of this workflow, not just the one repo it was first found in.
+          # aws-actions/configure-aws-credentials#1305 -- see
+          # docs/home-infra-ai-context's decisions.md for the ~15-minute
+          # hang this avoids on a self-hosted-runner-plus-container job.
           action-timeout-s: "90"
 
       - name: Initialize Terraform
