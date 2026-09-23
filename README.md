@@ -122,6 +122,13 @@ Inputs:
 | `extra_repo_vars` | no | Space-separated repository variable names (e.g. `"ROUTE53_ZONE_ID ALERT_EMAIL"`) that must be set and get exported as `TF_VAR_<lowercased_name>`. Covers whatever named variables that repo's own Terraform needs, without ever having to edit this shared workflow. |
 | `extra_validate_command` | no | Extra shell command run in the validate job (e.g. a repo's own unit test suite). |
 
+The `plan` job also posts (or updates, on repeat pushes to the same PR)
+a single comment with the plan's own output, wrapped in a `diff` fence
+so GitHub's Markdown renderer colors the `+`/`-` lines -- the closest a
+PR comment can get to `terraform plan`'s colored-terminal output
+without embedding raw ANSI escapes, which render as garbage in a
+comment body rather than color.
+
 Caller shape:
 
 ```yaml
@@ -146,6 +153,8 @@ jobs:
       # request internally. packages: read here fails with "requesting
       # 'packages: write', but is only allowed 'packages: read'".
       packages: write
+      # plan's own "Post plan to pull request" comment step needs this.
+      pull-requests: write
 ```
 
 ## `.github/workflows/terraform-apply.yml`
