@@ -1,30 +1,6 @@
 name: Trivy config scan
 
-# Reusable workflow_call counterpart for an IaC misconfiguration scan --
-# the first stage of a workspace-wide security audit (see
-# KandlerLi/home-infra-docs/docs/adr
-# 0022-trivy-config-scanning-and-public-repo-tradeoff.md), called via:
-#
-#   jobs:
-#     trivy-config:
-#       uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
-#       permissions:
-#         contents: read
-#
-# Deliberately its own workflow, not folded into terraform-checks.yml/
-# terraform-apply.yml -- this job fails on any finding (exit-code: "1"
-# below, including Low severity), but since it's a wholly separate
-# workflow run from plan/apply, that failure is structurally incapable of
-# blocking a plan/apply -- it's visible (a red check on the commit), not a
-# gate. Making it an actual gate would mean either a `needs:` dependency
-# from apply's own job or adding it to branch protection's required status
-# checks, neither of which this does.
-#
-# runs_on defaults to this workspace's usual self-hosted runner; the three
-# repos that deliberately have no self-hosted runner registered at all
-# (repo-infra, terraform-state, k3s-bootstrap -- see their own
-# branch_protection_enabled: false / "never CI" convention) override it to
-# a GitHub-hosted runner instead of getting one provisioned for them.
+# Separate workflow so a finding can never block a plan/apply: see README.
 
 on:
   workflow_call:
@@ -55,8 +31,6 @@ jobs:
           scan-ref: .
           format: table
           output: trivy-config-report.txt
-          # Fails the job on any finding, including Low -- see this file's
-          # own header comment for why that still can't block a plan/apply.
           exit-code: "1"
 
       - name: Publish findings to job summary

@@ -1,41 +1,6 @@
 name: Gitleaks secret scan
 
-# Reusable workflow_call counterpart for a git-history secrets scan --
-# the third and last stage of a workspace-wide security audit (trivy
-# config, then trivy image, then this). Uses gitleaks, not `trivy fs`
-# -- see KandlerLi/home-infra-docs/docs/adr
-# 0022-trivy-config-scanning-and-public-repo-tradeoff.md for why.
-#
-#   jobs:
-#     gitleaks:
-#       uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.11
-#       permissions:
-#         contents: read
-#
-# Fails on any finding (default gitleaks exit code) -- unlike
-# trivy-image.yml, real finding counts here are small and fully within
-# this workspace's own control (2 of 15 repos had any finding at all in
-# the initial rollout, both confirmed false positives -- see each
-# repo's own .gitleaksignore for the full triage), so there's no
-# equivalent of trivy-image's uncontrollable third-party CVE volume to
-# justify staying informational-only.
-#
-# Needs `fetch-depth: 0` on checkout -- GitHub Actions' default shallow
-# clone (depth 1) would defeat the whole point, same as `trivy fs` would.
-#
-# No AWS credentials, no in-cluster access, no local network at all
-# (pure offline git-history scan) -- runs on a GitHub-hosted runner by
-# default, unlike trivy-config.yml/trivy-image.yml's self-hosted
-# default, since there's no reason to ever provision this on the
-# self-hosted runner (a single, serial, scarce resource) in the first
-# place.
-#
-# gitleaks binary is downloaded and checksum-verified directly (not the
-# official gitleaks/gitleaks-action), same pattern as ci/Dockerfile's
-# own Terraform pin -- avoids depending on that Action's licensing terms
-# for org accounts (irrelevant to this personal-account workspace, but
-# simpler to just not depend on it) and avoids adding another entry to
-# every repo's transitive Actions allowlist.
+# Git-history secret scan: see README for why gitleaks, fetch-depth 0 and a direct binary download.
 
 on:
   workflow_call:
@@ -71,9 +36,7 @@ jobs:
           set -euo pipefail
           version="${{ inputs.gitleaks_version }}"
           archive="gitleaks_${version}_linux_x64.tar.gz"
-          # Must save under this exact filename -- sha256sum -c matches
-          # against the filename embedded in checksums.txt, not whatever
-          # name we choose for the download.
+          # Keep this filename: sha256sum -c matches the name inside checksums.txt.
           curl -fsSL -o "$archive" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
           curl -fsSL -o checksums.txt \

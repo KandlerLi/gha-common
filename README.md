@@ -64,7 +64,8 @@ should pick it up, one repo/commit at a time.
 ## `ci/Dockerfile`
 
 Terraform plus the handful of extra tools every caller's workflows need
-(`awscli`, `git`, `python3`, `unzip`). Built and pushed fresh on every
+(`awscli`, `git`, `python3`, `unzip`), pinned so a routine CI run never
+picks up a surprise toolchain change. Built and pushed fresh on every
 workflow run (`ghcr.io/kandlerli/<calling-repo-name>-ci:latest`) by
 `build-ci-image.yml`'s own `build-image` job, which both reusable
 workflows below call — that job checks out both the calling repo (for
@@ -93,16 +94,30 @@ extraction, same reason, as `build-ci-image.yml` above). `$ALL_VARS_JSON`
 stays a real GitHub Actions expression in the calling step's own `env:` --
 the one part no external script can produce -- everything else is plain
 shell; arguments are the space-separated repository-variable names to
-require and export.
+require and export:
+
+```yaml
+- name: Export and verify extra repository variables
+  env:
+    ALL_VARS_JSON: ${{ toJSON(vars) }}
+  run: gha-common/ci/export-repo-vars.sh ${{ inputs.extra_repo_vars }}
+```
 
 ## `.github/workflows/terraform-checks.yml`
 
 PR-time checks: build the CI image, `terraform fmt`/`validate` (+ an
 optional extra command), then a speculative `terraform plan` using
 read-only, short-lived AWS credentials — only for PRs from the repo itself,
-never forks. Mirrors `dyndns`'s original `checks.yml` almost exactly; see
-that workflow's own inline comments for the reasoning behind each step
-(the OIDC `action-timeout-s` mitigation in particular).
+never forks.
+
+Both this workflow and `terraform-apply.yml` set `action-timeout-s: "90"`
+on the AWS credentials step: on a self-hosted runner with a container
+job, `aws-actions/configure-aws-credentials#1305` otherwise hangs for
+about 15 minutes (see
+[`home-infra-docs`' `decisions.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/decisions.md)).
+`extra_validate_command` runs behind a step-level `if:`, not a check
+inside the shell script, after the shell-level version hit an
+empty-then-block syntax error (also in `decisions.md`).
 
 Both the `validate` and `plan` jobs bind-mount `/terraform-plugin-cache`
 from the self-hosted runner's own host into the container job and set
