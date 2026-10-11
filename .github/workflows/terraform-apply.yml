@@ -151,7 +151,7 @@ jobs:
 
       # A step-level if:, not a shell-level check inside "Run checks" --
       # matches terraform-checks.yml's own "Run extra validate command"
-      # step. See home-infra-docs' decisions.md for the
+      # step. See KandlerLi/home-infra-docs' decisions.md for the
       # empty-then-block syntax error the shell-level version had.
       - name: Run extra validate command
         if: inputs.extra_validate_command != ''

@@ -177,7 +177,7 @@ jobs:
           role-session-name: GitHubPlan-${{ github.run_id }}
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           # aws-actions/configure-aws-credentials#1305 -- see
-          # home-infra-docs' decisions.md for the ~15-minute
+          # KandlerLi/home-infra-docs' decisions.md for the ~15-minute
           # hang this avoids on a self-hosted-runner-plus-container job.
           action-timeout-s: "90"
 
