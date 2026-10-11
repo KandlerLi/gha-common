@@ -2,7 +2,7 @@ name: Trivy config scan
 
 # Reusable workflow_call counterpart for an IaC misconfiguration scan --
 # the first stage of a workspace-wide security audit (see
-# docs/home-infra-docs/docs/adr/
+# home-infra-docs/docs/adr/
 # 0022-trivy-config-scanning-and-public-repo-tradeoff.md), called via:
 #
 #   jobs:

@@ -2,7 +2,7 @@ name: Trivy image scan
 
 # Reusable workflow_call counterpart for a container image CVE scan --
 # the second stage of a workspace-wide security audit (see
-# docs/home-infra-docs/docs/adr/
+# home-infra-docs/docs/adr/
 # 0022-trivy-config-scanning-and-public-repo-tradeoff.md), called once
 # per image via a caller-side matrix:
 #

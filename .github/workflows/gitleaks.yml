@@ -3,7 +3,7 @@ name: Gitleaks secret scan
 # Reusable workflow_call counterpart for a git-history secrets scan --
 # the third and last stage of a workspace-wide security audit (trivy
 # config, then trivy image, then this). Uses gitleaks, not `trivy fs`
-# -- see docs/home-infra-docs/docs/adr/
+# -- see home-infra-docs/docs/adr/
 # 0022-trivy-config-scanning-and-public-repo-tradeoff.md for why.
 #
 #   jobs:
