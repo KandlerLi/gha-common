@@ -1,23 +1,6 @@
 name: Terraform checks
 
-# Reusable workflow_call counterpart to dyndns/website/aws-budget/
-# homeserver-health-check/ses-relay's own checks.yml, called via:
-#
-#   jobs:
-#     terraform:
-#       uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.7
-#       with:
-#         aws_region: eu-central-1
-#         extra_repo_vars: "ROUTE53_ZONE_ID"       # optional, space-separated
-#         extra_validate_command: ""               # optional
-#       secrets: inherit
-#       permissions:
-#         contents: read
-#         id-token: write
-#         packages: write # build-image needs write, not read -- see README.md
-#         pull-requests: write # plan's own PR-comment step needs this
-#
-# See README.md for the full input reference.
+# Reusable PR checks: inputs and caller shape in README.
 
 on:
   workflow_call:
@@ -61,12 +44,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      # The -v bind-mounts the runner Pod's own host_path-backed
-      # terraform-plugin-cache volume (k3s-bootstrap's
-      # modules/github_runner) into this nested container job, so
-      # `terraform init` below reuses providers already downloaded by an
-      # earlier job/run on this same node instead of fetching them cold
-      # on every ephemeral runner Pod.
+      # Provider plugin cache from the runner host: see README.
       options: >-
         --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
         -v /terraform-plugin-cache:/terraform-plugin-cache
@@ -107,7 +85,6 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      # See the validate job's own identical option for why.
       options: >-
         --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
         -v /terraform-plugin-cache:/terraform-plugin-cache
@@ -115,10 +92,7 @@ jobs:
       contents: read
       id-token: write
       packages: read
-      # Needed by the "Post plan to pull request" step below. Every
-      # caller must grant this too -- a reusable workflow's own job
-      # permissions are capped at whatever the caller job itself
-      # declares, never wider.
+      # For the PR comment step; callers must grant it too.
       pull-requests: write
     env:
       AWS_REGION: ${{ inputs.aws_region }}
@@ -144,8 +118,7 @@ jobs:
             exit 1
           fi
 
-      # Only for ci/export-repo-vars.sh below -- ref hardcoded for the same
-      # reason as build-ci-image.yml's own identical checkout step.
+      # Only for ci/export-repo-vars.sh; ref bumped by hand like build-ci-image.yml's.
       - name: Check out gha-common
         if: inputs.extra_repo_vars != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -154,15 +127,6 @@ jobs:
           ref: v0.0.7
           path: gha-common
 
-      # Generic replacement for each caller's own hardcoded "which named
-      # repository variables does this repo's Terraform need" step --
-      # extra_repo_vars is a space-separated list of vars.* names (e.g.
-      # "ROUTE53_ZONE_ID ALERT_EMAIL"); each gets validated and exported as
-      # TF_VAR_<lowercased_name>, so a new repo needing a new named
-      # variable never requires editing this shared workflow. Implementation
-      # lives in ci/export-repo-vars.sh (extracted 2026-09-22, ponytail-audit
-      # -- this was a byte-identical inline loop here and in
-      # terraform-apply.yml).
       - name: Export and verify extra repository variables
         if: inputs.extra_repo_vars != ''
         env:
@@ -176,9 +140,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           role-session-name: GitHubPlan-${{ github.run_id }}
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
-          # aws-actions/configure-aws-credentials#1305 -- see
-          # KandlerLi/home-infra-docs' decisions.md for the ~15-minute
-          # hang this avoids on a self-hosted-runner-plus-container job.
+          # aws-actions/configure-aws-credentials#1305: avoids a ~15-minute hang, see README.
           action-timeout-s: "90"
 
       - name: Initialize Terraform
@@ -189,13 +151,6 @@ jobs:
           set -o pipefail
           terraform plan -input=false -lock=false -no-color | tee plan_output.txt
 
-      # Wrapped in a ```diff fence, not posted raw -- GitHub's Markdown
-      # renderer colors +/- lines the same way it would a real diff,
-      # which is the closest a PR comment can get to terraform plan's
-      # own colored-terminal output without embedding raw ANSI escapes
-      # (which render as garbage in a comment body, not color). Finds
-      # and edits this job's own prior comment on repeat pushes to the
-      # same PR instead of appending a new one every time.
       - name: Post plan to pull request
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:

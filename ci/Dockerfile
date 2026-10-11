@@ -1,9 +1,4 @@
-# Shared CI image for every repo calling this repo's terraform-checks.yml/
-# terraform-apply.yml reusable workflows: Terraform plus the handful of
-# extra tools those workflows need, pinned so a routine CI run never picks
-# up a surprise toolchain change underneath it. Built and pushed once per
-# workflow run, from whichever repo calls it -- see terraform-checks.yml's
-# build-image job.
+# Shared CI image, built per run by build-ci-image.yml: see README.
 FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 ARG TERRAFORM_VERSION=1.15.8

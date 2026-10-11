@@ -1,30 +1,6 @@
 name: Terraform apply
 
-# Reusable workflow_call counterpart to dyndns/website/aws-budget/
-# homeserver-health-check/ses-relay's own apply.yml, called via:
-#
-#   on:
-#     push:
-#       branches: [main]
-#     workflow_dispatch:
-#   permissions:
-#     contents: read
-#     id-token: write
-#     packages: write # build-image needs write, not read -- see README.md
-#   jobs:
-#     terraform:
-#       uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.7
-#       with:
-#         aws_region: eu-central-1
-#         extra_repo_vars: "ROUTE53_ZONE_ID"       # optional, space-separated
-#         extra_validate_command: ""               # optional
-#         post_apply_command: ""                   # optional
-#       secrets: inherit
-#
-# concurrency (a per-repo group name) stays declared in the caller, not
-# here -- workflow_call doesn't carry concurrency settings through.
-#
-# See README.md for the full input reference.
+# Reusable apply on main: inputs and caller shape in README; callers declare concurrency.
 
 on:
   workflow_call:
@@ -73,12 +49,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      # The -v bind-mounts the runner Pod's own host_path-backed
-      # terraform-plugin-cache volume (k3s-bootstrap's
-      # modules/github_runner) into this nested container job, so
-      # `terraform init` below reuses providers already downloaded by an
-      # earlier job/run on this same node instead of fetching them cold
-      # on every ephemeral runner Pod.
+      # Provider plugin cache from the runner host: see README.
       options: >-
         --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
         -v /terraform-plugin-cache:/terraform-plugin-cache
@@ -110,8 +81,7 @@ jobs:
             exit 1
           fi
 
-      # Only for ci/export-repo-vars.sh below -- ref hardcoded for the same
-      # reason as build-ci-image.yml's own identical checkout step.
+      # Only for ci/export-repo-vars.sh; ref bumped by hand like build-ci-image.yml's.
       - name: Check out gha-common
         if: inputs.extra_repo_vars != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -120,11 +90,6 @@ jobs:
           ref: v0.0.7
           path: gha-common
 
-      # See terraform-checks.yml's own identical step for why this is
-      # data-driven rather than hardcoding each repo's own variable names.
-      # Implementation lives in ci/export-repo-vars.sh (extracted
-      # 2026-09-22, ponytail-audit -- this was a byte-identical inline loop
-      # here and in terraform-checks.yml).
       - name: Export and verify extra repository variables
         if: inputs.extra_repo_vars != ''
         env:
@@ -138,7 +103,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: GitHubActions-${{ github.run_id }}
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
-          # See terraform-checks.yml's own identical setting for why.
+          # aws-actions/configure-aws-credentials#1305: avoids a ~15-minute hang, see README.
           action-timeout-s: "90"
 
       - name: Initialize Terraform
@@ -149,10 +114,7 @@ jobs:
           terraform fmt -check -recursive
           terraform validate
 
-      # A step-level if:, not a shell-level check inside "Run checks" --
-      # matches terraform-checks.yml's own "Run extra validate command"
-      # step. See KandlerLi/home-infra-docs' decisions.md for the
-      # empty-then-block syntax error the shell-level version had.
+      # Step-level if, not a shell-level check: see README.
       - name: Run extra validate command
         if: inputs.extra_validate_command != ''
         run: ${{ inputs.extra_validate_command }}

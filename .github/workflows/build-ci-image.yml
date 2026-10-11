@@ -1,18 +1,6 @@
 name: Build CI image
 
-# Nested reusable workflow: builds and pushes the shared CI image used by
-# terraform-checks.yml's/terraform-apply.yml's own later jobs. Extracted
-# 2026-09-22 (ponytail-audit) -- both of those files had a byte-identical
-# copy of this job. GitHub resolves a relative `uses:` path (like both
-# files' own `./.github/workflows/build-ci-image.yml`) against the same
-# ref the outer reusable workflow was checked out at, so a caller pinning
-# terraform-checks.yml@vX transitively gets this file's own content at
-# that same vX -- no separate version to track, and a future tag bump
-# only means editing the "Check out gha-common" step's own ref in this
-# one file, not two.
-#
-# Takes no inputs: every value the job needs (github.event.repository.name,
-# github.actor) is ambient workflow context, unaffected by nesting.
+# Nested reusable workflow for the shared CI image: see README.
 
 on:
   workflow_call:
@@ -40,12 +28,7 @@ jobs:
       - name: Check out calling repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Only for the Dockerfile -- the calling repo's own checkout above is
-      # what every other step in the caller workflow actually builds/tests.
-      # ref is hardcoded rather than dynamically resolved from the outer
-      # caller's own @tag, deliberately: bump it by hand alongside this
-      # file's own content whenever a new tag is cut, the same one edit
-      # either way.
+      # Only for the Dockerfile; ref bumped by hand with each new tag, see README.
       - name: Check out gha-common
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
