@@ -13,7 +13,7 @@ a Terraform dependency).
 and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
 runner at all -- with `runs_on` overridden to a GitHub-hosted runner, so
 adopting it doesn't require provisioning a self-hosted runner for them. See
-`docs/home-infra-docs/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md`
+[`home-infra-docs/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md)
 for the full rollout.
 
 `trivy-image.yml` is only called by the repos that actually have pinned
@@ -26,7 +26,7 @@ secrets scan has no reason to exclude any repo by content type.
 
 This repo has no build/apply CI of its own (no `runner: true`/
 `action_variables`/`required_status_check_contexts` entry in
-`github/repo-infra/config.yml`) — a caller's `uses:` job runs under that
+[`repo-infra/config.yml`](https://github.com/KandlerLi/repo-infra/blob/main/config.yml)) — a caller's `uses:` job runs under that
 caller's own repository context (its own self-hosted runner
 registration, its own `vars.*`/`secrets.*`), the reusable workflow file
 just supplies the shared YAML. It does still call its own `gitleaks.yml`
@@ -302,7 +302,7 @@ jobs:
 
 Git-history secret scan -- the third and last stage of a workspace-wide
 security audit. Uses `gitleaks`, not `trivy fs` -- see
-`docs/home-infra-docs/docs/adr/
+`[`home-infra-docs/docs/adr`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/adr)
 0022-trivy-config-scanning-and-public-repo-tradeoff.md` for why.
 Checks out with `fetch-depth: 0` (a normal shallow clone would be just as
 blind). Downloads and checksum-verifies the `gitleaks` binary directly
