@@ -275,6 +275,11 @@ images this workspace doesn't build, not something a required check could
 ever reasonably drive to zero). Findings still land in the job summary, so
 drift over time stays visible even though nothing blocks on it.
 
+The one exception is `fail_on_severity`, meant for a scheduled caller run:
+it fails the job on a finding of that severity that has a fix
+(`ignore-unfixed`), so GitHub's failed-run email surfaces a new fixable CVE
+in an image that hasn't changed. Leave it empty on `pull_request`/`push`.
+
 Logs in to GHCR with the caller's own `GITHUB_TOKEN` before scanning
 (harmless for a non-GHCR `image_ref`) -- needed for a private package like
 this account's own `home-agent`/`sankey-export` images, since trivy has no
@@ -290,6 +295,7 @@ Inputs:
 | `image_name` | yes | Short label for the image, shown in the job name and job summary. |
 | `image_ref` | yes | Full image reference, digest-pinned where the caller pins it. |
 | `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+| `fail_on_severity` | no | Comma-separated severities, e.g. `CRITICAL`. Fails the job on a fixable finding of these severities. Defaults to `""` (never fails). |
 
 Caller shape (one job per image, via a matrix):
 
