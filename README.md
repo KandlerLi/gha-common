@@ -17,7 +17,7 @@ adopting it doesn't require provisioning a self-hosted runner for them. See
 for the full rollout.
 
 `trivy-image.yml` is only called by the repos that actually have pinned
-container images to scan (`home-infra`, `k3s-apps`) -- most repos in this
+container images to scan (`home-infra`, `k3s-apps`, `k3s-bootstrap`) -- most repos in this
 workspace are pure Terraform with no image to scan at all.
 
 `gitleaks.yml` is called by every repo in the workspace, including the two
