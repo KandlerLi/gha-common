@@ -65,12 +65,15 @@ should pick it up, one repo/commit at a time.
 
 Terraform plus the handful of extra tools every caller's workflows need
 (`awscli`, `git`, `python3`, `unzip`), pinned so a routine CI run never
-picks up a surprise toolchain change. Built and pushed fresh on every
-workflow run (`ghcr.io/kandlerli/<calling-repo-name>-ci:latest`) by
-`build-ci-image.yml`'s own `build-image` job, which both reusable
-workflows below call — that job checks out both the calling repo (for
-everything else) and this repo (just for the Dockerfile, at a hardcoded
-`ref:` bumped by hand alongside any new tag).
+picks up a surprise toolchain change. Built by `build-ci-image.yml`'s
+own `build-image` job, which both reusable workflows below call, as
+`ghcr.io/kandlerli/<calling-repo-name>-ci:<ci tree hash>-<ISO week>`.
+The job checks out this repo (just for `ci/`, at a hardcoded `ref:`
+bumped by hand alongside any new tag) and skips build and push when GHCR
+already has that tag. So the image is rebuilt only when `ci/` changes
+and once a week, which picks up Debian's security updates from
+`apt-get`; every other run reuses it, which keeps the homeserver's
+disk load down (tracker #12). Later jobs run in the `image` output.
 
 ## `.github/workflows/build-ci-image.yml`
 

@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 20
     environment: production
     container:
-      image: ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
+      image: ${{ needs.build-image.outputs.image }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
