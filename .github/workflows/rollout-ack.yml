@@ -1,0 +1,25 @@
+name: Rollout acknowledgement
+
+# For repos rolled out by hand after merging: fails until the PR body's rollout checkbox is ticked. See README.
+
+on:
+  workflow_call: {}
+
+jobs:
+  rollout-ack:
+    name: Rollout acknowledged
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Check the rollout checkbox
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if grep -qE '^\s*[-*] \[[xX]\] .*<!-- rollout-ack -->' <<<"$BODY"; then
+            echo "Rollout acknowledged."
+          else
+            echo "::error::Tick the rollout checkbox in the PR description (the line marked <!-- rollout-ack -->)."
+            exit 1
+          fi
