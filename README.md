@@ -1,6 +1,6 @@
 # gha-common
 
-Shared CI Dockerfile and five `workflow_call` reusable GitHub Actions
+Shared CI Dockerfile and `workflow_call` reusable GitHub Actions
 workflows, used by every Terraform-based repo in this workspace that used
 to carry its own near-identical `checks.yml`/`apply.yml`/`.github/ci/Dockerfile`
 (`dyndns`, `website`, `aws-budget`, `homeserver-health-check`, `ses-relay`).
@@ -361,4 +361,31 @@ jobs:
     uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.11
     permissions:
       contents: read
+```
+
+## `.github/workflows/rollout-ack.yml`
+
+For repos that are rolled out by hand after merging (`home-infra`,
+`k3s-bootstrap`, `terraform-state`, `repo-infra`, `fritzbox`): fails
+until the PR description has a ticked checkbox marked
+`<!-- rollout-ack -->`, so merging means having confirmed the rollout
+(tracker #46). Each caller's `.github/pull_request_template.md` carries
+the checkbox; Renovate adds it to its PRs through `prBodyNotes`. It
+confirms intent before the merge and does not detect a rollout that was
+forgotten afterwards.
+
+The caller must also trigger on `edited`, so ticking the box re-runs the
+check. The required context is `rollout-ack / Rollout acknowledged`.
+
+Caller shape:
+
+```yaml
+name: Rollout acknowledgement
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+jobs:
+  rollout-ack:
+    uses: KandlerLi/gha-common/.github/workflows/rollout-ack.yml@v0.0.16
+    permissions: {}
 ```
