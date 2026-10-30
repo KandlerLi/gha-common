@@ -5,6 +5,9 @@ name: Build CI image
 on:
   workflow_call:
     outputs:
+      image:
+        description: The CI image reference to run later jobs in.
+        value: ${{ jobs.build-image.outputs.image }}
       uid:
         description: Numeric uid of the container's own service account, for --user options in later jobs.
         value: ${{ jobs.build-image.outputs.uid }}
@@ -21,13 +24,11 @@ jobs:
       contents: read
       packages: write
     outputs:
+      image: ${{ steps.tag.outputs.image }}
       uid: ${{ steps.whoami.outputs.uid }}
       gid: ${{ steps.whoami.outputs.gid }}
 
     steps:
-      - name: Check out calling repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       # Only for the Dockerfile; ref bumped by hand with each new tag, see README.
       - name: Check out gha-common
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -36,19 +37,32 @@ jobs:
           ref: v0.0.7
           path: gha-common
 
+      # ci/'s tree hash plus the ISO week: rebuilt when ci/ changes, and weekly for Debian's security updates.
+      - name: Determine image tag
+        id: tag
+        run: >-
+          echo "image=ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:$(git -C gha-common rev-parse --short=12 HEAD:ci)-$(date -u +%G-w%V)"
+          >> "$GITHUB_OUTPUT"
+
       - name: Log in to GHCR
         run: >-
           echo "${{ secrets.GITHUB_TOKEN }}"
           | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: Check for an existing image
+        id: existing
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.image }}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build CI image
-        run: >-
-          docker build
-          -t ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
-          gha-common/ci
+        if: steps.existing.outputs.found != 'true'
+        run: docker build -t "${{ steps.tag.outputs.image }}" gha-common/ci
 
       - name: Push CI image
-        run: docker push ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:latest
+        if: steps.existing.outputs.found != 'true'
+        run: docker push "${{ steps.tag.outputs.image }}"
 
       - name: Determine service account identity
         id: whoami

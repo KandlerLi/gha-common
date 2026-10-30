@@ -1,4 +1,4 @@
-# Shared CI image, built per run by build-ci-image.yml: see README.
+# Shared CI image, built by build-ci-image.yml when this directory changes and weekly: see README.
 FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 ARG TERRAFORM_VERSION=1.15.8
