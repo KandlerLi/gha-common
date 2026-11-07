@@ -10,6 +10,6 @@ on:
 
 jobs:
   gitleaks:
-    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.12
+    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.17
     permissions:
       contents: read
