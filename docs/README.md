@@ -1,0 +1,394 @@
+# gha-common
+
+Shared CI Dockerfile and `workflow_call` reusable GitHub Actions
+workflows, used by every Terraform-based repo in this workspace that used
+to carry its own near-identical `checks.yml`/`apply.yml`/`.github/ci/Dockerfile`
+(`dyndns`, `website`, `aws-budget`, `homeserver-health-check`, `ses-relay`).
+`home-infra` is a fundamentally different, Ansible-based pipeline and isn't
+a consumer of the Terraform-specific workflows below (though it can still
+call `trivy-config.yml`/`trivy-image.yml`/`gitleaks.yml`, none of which has
+a Terraform dependency).
+
+`trivy-config.yml` is additionally called by `repo-infra`, `terraform-state`,
+and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
+runner at all -- with `runs_on` overridden to a GitHub-hosted runner, so
+adopting it doesn't require provisioning a self-hosted runner for them. See
+[`home-infra-docs/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md)
+for the full rollout.
+
+`trivy-image.yml` is only called by the repos that actually have pinned
+container images to scan (`home-infra`, `k3s-apps`, `k3s-bootstrap`) -- most repos in this
+workspace are pure Terraform with no image to scan at all.
+
+`gitleaks.yml` is called by every repo in the workspace, including the two
+`docs/` repos and the GitHub profile README -- unlike the other two, a
+secrets scan has no reason to exclude any repo by content type.
+
+This repo has no build/apply CI of its own (no `runner: true`/
+`action_variables`/`required_status_check_contexts` entry in
+[`repo-infra/config.yml`](https://github.com/KandlerLi/repo-infra/blob/main/config.yml)) — a caller's `uses:` job runs under that
+caller's own repository context (its own self-hosted runner
+registration, its own `vars.*`/`secrets.*`), the reusable workflow file
+just supplies the shared YAML. It does still call its own `gitleaks.yml`
+on itself (`.github/workflows/security-scan.yml`) -- that reasoning
+doesn't apply to a secrets scan, which needs no build/apply pipeline to
+make sense, and this repo is public like every other repo in the audit.
+
+## Why this repo is public
+
+GitHub only allows cross-repository reusable workflows from a personal
+(non-Enterprise) account when the repository holding the workflow is
+public. All five current callers are public already.
+
+## Versioning
+
+Callers pin a specific semver tag (`@v0.0.7`), never `@main` — matches this
+workspace's existing discipline of pinning third-party GitHub Actions by
+exact version (`sha_pinning_required = true` in every managed repo's
+`github_actions_repository_permissions`), applied here to a first-party
+repo too. A bad edit to `gha-common` can't silently break every caller's CI
+at once; each repo adopts a new tag deliberately, in its own commit.
+
+To cut a new tag after a change here (never amend or force-push an
+existing one, even a very recent or still-unadopted tag — always a new,
+additive tag):
+
+```bash
+git tag v0.0.8
+git push origin v0.0.8
+```
+
+Then bump the `@v0.0.7` → `@v0.0.8` reference in whichever caller repo(s)
+should pick it up, one repo/commit at a time.
+
+## `ci/Dockerfile`
+
+Terraform plus the handful of extra tools every caller's workflows need
+(`awscli`, `git`, `python3`, `unzip`), pinned so a routine CI run never
+picks up a surprise toolchain change. Built by `build-ci-image.yml`'s
+own `build-image` job, which both reusable workflows below call, as
+`ghcr.io/kandlerli/<calling-repo-name>-ci:<ci tree hash>-<ISO week>`.
+The job checks out this repo (just for `ci/`, at a hardcoded `ref:`
+bumped by hand alongside any new tag) and skips build and push when GHCR
+already has that tag. So the image is rebuilt only when `ci/` changes
+and once a week, which picks up Debian's security updates from
+`apt-get`; every other run reuses it, which keeps the homeserver's
+disk load down (tracker #12). Later jobs run in the `image` output.
+
+## `.github/workflows/build-ci-image.yml`
+
+Nested reusable workflow (extracted 2026-09-22, ponytail-audit):
+`terraform-checks.yml` and `terraform-apply.yml` both used to carry a
+byte-identical copy of this job. Takes no inputs -- everything it needs
+(`github.event.repository.name`, `github.actor`) is ambient workflow
+context, unaffected by nesting -- and returns `uid`/`gid` outputs for the
+container `options: --user` settings both callers' own later jobs use.
+Called via a relative path (`uses: ./.github/workflows/build-ci-image.yml`),
+which GitHub resolves against the same ref the outer reusable workflow was
+checked out at -- so bumping a caller's `@v0.0.X` pin picks up this file's
+own content at that same tag automatically; only its own hardcoded
+Dockerfile-checkout `ref:` needs a separate manual bump.
+
+## `ci/export-repo-vars.sh`
+
+Shared implementation of the "Export and verify extra repository
+variables" step both reusable workflows below call (same
+extraction, same reason, as `build-ci-image.yml` above). `$ALL_VARS_JSON`
+stays a real GitHub Actions expression in the calling step's own `env:` --
+the one part no external script can produce -- everything else is plain
+shell; arguments are the space-separated repository-variable names to
+require and export:
+
+```yaml
+- name: Export and verify extra repository variables
+  env:
+    ALL_VARS_JSON: ${{ toJSON(vars) }}
+  run: gha-common/ci/export-repo-vars.sh ${{ inputs.extra_repo_vars }}
+```
+
+## `.github/workflows/terraform-checks.yml`
+
+PR-time checks: build the CI image, `terraform fmt`/`validate` (+ an
+optional extra command), then a speculative `terraform plan` using
+read-only, short-lived AWS credentials — only for PRs from the repo itself,
+never forks.
+
+Both this workflow and `terraform-apply.yml` set `action-timeout-s: "90"`
+on the AWS credentials step: on a self-hosted runner with a container
+job, `aws-actions/configure-aws-credentials#1305` otherwise hangs for
+about 15 minutes (see
+[`home-infra-docs`' `decisions.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/decisions.md)).
+`extra_validate_command` runs behind a step-level `if:`, not a check
+inside the shell script, after the shell-level version hit an
+empty-then-block syntax error (also in `decisions.md`).
+
+Both the `validate` and `plan` jobs bind-mount `/terraform-plugin-cache`
+from the self-hosted runner's own host into the container job and set
+`TF_PLUGIN_CACHE_DIR` to it, so `terraform init` reuses providers already
+downloaded on this node instead of fetching them cold on every ephemeral
+runner Pod. This assumes that path exists on the runner host — provisioned
+by `k3s-bootstrap`'s `modules/github_runner`, not by this repo — so this
+workflow only ever runs correctly against that self-hosted runner, never a
+`runs_on`-overridden GitHub-hosted one (not offered as an input here for
+that reason).
+
+Inputs:
+
+| Input | Required | Description |
+|---|---|---|
+| `aws_region` | yes | Region for the read-only plan credentials. |
+| `extra_repo_vars` | no | Space-separated repository variable names (e.g. `"ROUTE53_ZONE_ID ALERT_EMAIL"`) that must be set and get exported as `TF_VAR_<lowercased_name>`. Covers whatever named variables that repo's own Terraform needs, without ever having to edit this shared workflow. |
+| `extra_validate_command` | no | Extra shell command run in the validate job (e.g. a repo's own unit test suite). |
+
+The `plan` job also posts (or updates, on repeat pushes to the same PR)
+a single comment with the plan's own output, wrapped in a `diff` fence
+so GitHub's Markdown renderer colors the `+`/`-` lines -- the closest a
+PR comment can get to `terraform plan`'s colored-terminal output
+without embedding raw ANSI escapes, which render as garbage in a
+comment body rather than color.
+
+Caller shape:
+
+```yaml
+name: Checks
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  terraform:
+    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.7
+    with:
+      aws_region: eu-central-1
+      extra_repo_vars: "ROUTE53_ZONE_ID"
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+      # A caller's job-level permissions cap every nested job inside the
+      # reusable workflow -- must cover the union of what any of them
+      # ask for. build-image needs write (it pushes to GHCR); the
+      # narrower validate/plan jobs still only get what they themselves
+      # request internally. packages: read here fails with "requesting
+      # 'packages: write', but is only allowed 'packages: read'".
+      packages: write
+      # plan's own "Post plan to pull request" comment step needs this.
+      pull-requests: write
+```
+
+## `.github/workflows/terraform-apply.yml`
+
+Same shape, triggered on `main`: build the image, real `terraform apply`
+with short-lived deploy credentials from the `production` environment, then
+an optional post-apply command.
+
+Inputs: same `aws_region`/`extra_repo_vars`/`extra_validate_command` as
+above, plus:
+
+| Input | Required | Description |
+|---|---|---|
+| `post_apply_command` | no | Shell command run after a successful `terraform apply`, with the same AWS credentials (e.g. `website`'s S3 sync + CloudFront invalidation). |
+
+Caller shape:
+
+```yaml
+name: Apply
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+  packages: write # see terraform-checks.yml's caller shape for why
+concurrency:
+  group: <repo-name>-terraform
+  cancel-in-progress: false
+jobs:
+  terraform:
+    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.7
+    with:
+      aws_region: eu-central-1
+      extra_repo_vars: "ROUTE53_ZONE_ID"
+    secrets: inherit
+```
+
+`concurrency` stays declared in the caller — `workflow_call` doesn't carry
+concurrency settings through from the reusable workflow itself.
+
+## `.github/workflows/trivy-config.yml`
+
+`trivy config` IaC misconfiguration scan — no Docker image build, no AWS
+credentials, findings land in the job summary. Fails the job on any
+finding, including Low severity (`exit-code: "1"`). Its own workflow
+rather than a job folded into the two above, specifically so that failure
+stays structurally incapable of blocking a plan/apply — it's a visible red
+check on the commit, not a gate; making it an actual gate would need a
+`needs:` dependency from apply's own job or a branch-protection required
+status check, neither of which this does.
+
+Inputs:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+
+Caller shape (typical — self-hosted runner, one of the repos that already
+has one registered):
+
+```yaml
+name: Security scan
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  trivy-config:
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
+    permissions:
+      contents: read
+```
+
+Caller shape (`repo-infra`/`terraform-state`/`k3s-bootstrap` — no
+self-hosted runner registered for these, deliberately not provisioning one
+just for a read-only scan):
+
+```yaml
+name: Security scan
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  trivy-config:
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
+    with:
+      runs_on: '["ubuntu-latest"]'
+    permissions:
+      contents: read
+```
+
+## `.github/workflows/trivy-image.yml`
+
+`trivy image` container CVE scan, one caller-side matrix entry per pinned
+image -- no Docker image build of its own, no AWS credentials. Unlike
+`trivy-config.yml`, this one is deliberately informational only
+(`exit-code: "0"`): real per-image finding counts run into the hundreds or
+thousands (almost entirely upstream OS/library CVEs in third-party base
+images this workspace doesn't build, not something a required check could
+ever reasonably drive to zero). Findings still land in the job summary, so
+drift over time stays visible even though nothing blocks on it.
+
+The one exception is `fail_on_severity`, meant for a scheduled caller run:
+it fails the job on a finding of that severity that has a fix
+(`ignore-unfixed`), so GitHub's failed-run email surfaces a new fixable CVE
+in an image that hasn't changed. Leave it empty on `pull_request`/`push`.
+
+Logs in to GHCR with the caller's own `GITHUB_TOKEN` before scanning
+(harmless for a non-GHCR `image_ref`) -- needed for a private package like
+this account's own `home-agent`/`sankey-export` images, since trivy has no
+separate registry-auth input and instead reads the runner's own Docker
+config the same way `checks.yml`/`build-home-agent.yml` already do to
+push. Requires the caller to grant `packages: read`, not just
+`contents: read`.
+
+Inputs:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `image_name` | yes | Short label for the image, shown in the job name and job summary. |
+| `image_ref` | yes | Full image reference, digest-pinned where the caller pins it. |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+| `fail_on_severity` | no | Comma-separated severities, e.g. `CRITICAL`. Fails the job on a fixable finding of these severities. Defaults to `""` (never fails). |
+
+Caller shape (one job per image, via a matrix):
+
+```yaml
+jobs:
+  trivy-image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: some-image
+            ref: docker.io/some/image:1.2.3@sha256:...
+          - name: another-image
+            ref: ghcr.io/some/other-image:4.5.6@sha256:...
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.10
+    with:
+      image_name: ${{ matrix.name }}
+      image_ref: ${{ matrix.ref }}
+    permissions:
+      contents: read
+      packages: read
+```
+
+## `.github/workflows/gitleaks.yml`
+
+Git-history secret scan -- the third and last stage of a workspace-wide
+security audit. Uses `gitleaks`, not `trivy fs` -- see
+`[`home-infra-docs/docs/adr`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/adr)
+0022-trivy-config-scanning-and-public-repo-tradeoff.md` for why.
+Checks out with `fetch-depth: 0` (a normal shallow clone would be just as
+blind). Downloads and checksum-verifies the `gitleaks` binary directly
+rather than using the official `gitleaks/gitleaks-action`, matching
+`ci/Dockerfile`'s own Terraform-pinning convention -- avoids depending on
+that Action's org-account licensing terms and avoids one more entry in
+every repo's transitive Actions allowlist.
+
+Fails on any finding (gitleaks' own default exit code) -- unlike
+`trivy-image.yml`, real finding counts here are small and fully within
+this workspace's own control (2 of 15 repos had any finding at all in the
+initial rollout, both confirmed false positives and allowlisted via each
+repo's own `.gitleaksignore`), so there's no equivalent of
+`trivy-image.yml`'s uncontrollable third-party CVE volume to justify
+staying informational-only.
+
+Inputs:
+
+| Input | Required | Description |
+| --- | --- | --- |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`) -- unlike the two workflows above, there's no reason to ever run this on the self-hosted runner (no AWS credentials, no in-cluster access, no local network at all). |
+| `gitleaks_version` | no | Pinned gitleaks release version, without the `v` prefix. Defaults to `"8.30.1"`. |
+
+Caller shape:
+
+```yaml
+name: Security scan
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  gitleaks:
+    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.11
+    permissions:
+      contents: read
+```
+
+## `.github/workflows/rollout-ack.yml`
+
+For repos that are rolled out by hand after merging (`home-infra`,
+`k3s-bootstrap`, `terraform-state`, `repo-infra`, `fritzbox`): fails
+until the PR description has a ticked checkbox marked
+`<!-- rollout-ack -->`, so merging means having confirmed the rollout
+(tracker #46). Each caller's `.github/pull_request_template.md` carries
+the checkbox; Renovate adds it to its PRs through `prBodyNotes`. It
+confirms intent before the merge and does not detect a rollout that was
+forgotten afterwards.
+
+The caller must also trigger on `edited`, so ticking the box re-runs the
+check. The required context is `rollout-ack / Rollout acknowledged`.
+
+Caller shape:
+
+```yaml
+name: Rollout acknowledgement
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+jobs:
+  rollout-ack:
+    uses: KandlerLi/gha-common/.github/workflows/rollout-ack.yml@v0.0.16
+    permissions: {}
+```
