@@ -42,24 +42,57 @@ public. All five current callers are public already.
 
 ## Versioning
 
-Callers pin a specific semver tag (`@v0.0.7`), never `@main` — matches this
-workspace's existing discipline of pinning third-party GitHub Actions by
-exact version (`sha_pinning_required = true` in every managed repo's
-`github_actions_repository_permissions`), applied here to a first-party
-repo too. A bad edit to `gha-common` can't silently break every caller's CI
-at once; each repo adopts a new tag deliberately, in its own commit.
+Releases follow [Semantic Versioning 2.0.0](https://semver.org/) from
+`v1.0.0` on. `v0.0.1`–`v0.0.17` predate that: they only ever bumped the
+last number, whatever changed, and stay as they are.
 
-To cut a new tag after a change here (never amend or force-push an
-existing one, even a very recent or still-unadopted tag — always a new,
-additive tag):
+Callers pin an exact tag (`@v1.0.0`), never `@main` or a moving major tag
+like `@v1`. That matches how this workspace pins third-party Actions
+(`sha_pinning_required = true` in every managed repo), so a bad edit here
+can't break every caller's CI at once. Renovate proposes new tags and,
+because the numbers are honest, keeps a MAJOR out of the "non-major" group.
+
+### Public API
+
+Anything a caller or `repo-infra` relies on:
+
+- workflow file paths under `.github/workflows/` that callers `uses:`
+- inputs (names, types, required/optional, defaults) and outputs
+- the permissions and secrets a caller must grant (`secrets: inherit`)
+- job names, since they are the check contexts `repo-infra`'s
+  `required_status_check_contexts` require (`terraform / Validate`)
+- documented behaviour callers depend on: plan only on PRs from the
+  repository itself, one updated plan comment per PR, apply only through
+  the `production` environment, the runner labels jobs run on
+
+Not public: `ci/` (Dockerfile, scripts), the CI image, and the steps inside
+a job, as long as the above holds.
+
+### Which number to bump
+
+- **MAJOR**: a caller or `repo-infra` must change something: an input or
+  workflow removed or renamed, a new required input or permission, a job
+  renamed or removed, documented behaviour changed.
+- **MINOR**: new, backward-compatible API (a new optional input, a new
+  workflow), or a deprecation. Deprecate in a MINOR before removing in a
+  MAJOR.
+- **PATCH**: fixes and internal changes that leave the API as is
+  (pinned tool bumps, faster steps, a Dockerfile change).
+
+A tag is never moved, amended or force-pushed, even when it is new and no
+caller uses it yet; a mistake gets a new release (semver.org: released
+versions are immutable).
+
+### Cutting a release
 
 ```bash
-git tag v0.0.8
-git push origin v0.0.8
+git checkout main && git pull --ff-only
+gh release create v1.1.0 --target main --title v1.1.0 --notes-file notes.md
 ```
 
-Then bump the `@v0.0.7` → `@v0.0.8` reference in whichever caller repo(s)
-should pick it up, one repo/commit at a time.
+The notes say what changed and, for a MAJOR, what callers must do first
+and in which order (e.g. a `repo-infra` change before the caller bumps).
+Then each caller adopts the tag in its own PR.
 
 ## `ci/Dockerfile`
 
@@ -85,7 +118,7 @@ context, unaffected by nesting -- and returns `uid`/`gid` outputs for the
 container `options: --user` settings both callers' own later jobs use.
 Called via a relative path (`uses: ./.github/workflows/build-ci-image.yml`),
 which GitHub resolves against the same ref the outer reusable workflow was
-checked out at -- so bumping a caller's `@v0.0.X` pin picks up this file's
+checked out at -- so bumping a caller's pin picks up this file's
 own content at that same tag automatically; only its own hardcoded
 Dockerfile-checkout `ref:` needs a separate manual bump.
 
@@ -165,7 +198,7 @@ on:
   workflow_dispatch:
 jobs:
   terraform:
-    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v0.0.7
+    uses: KandlerLi/gha-common/.github/workflows/terraform-checks.yml@v1.0.0
     with:
       aws_region: eu-central-1
       extra_repo_vars: "ROUTE53_ZONE_ID"
@@ -214,7 +247,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   terraform:
-    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v0.0.7
+    uses: KandlerLi/gha-common/.github/workflows/terraform-apply.yml@v1.0.0
     with:
       aws_region: eu-central-1
       extra_repo_vars: "ROUTE53_ZONE_ID"
@@ -252,7 +285,7 @@ on:
   workflow_dispatch:
 jobs:
   trivy-config:
-    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v1.0.0
     permissions:
       contents: read
 ```
@@ -269,7 +302,7 @@ on:
   workflow_dispatch:
 jobs:
   trivy-config:
-    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v0.0.9
+    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v1.0.0
     with:
       runs_on: '["ubuntu-latest"]'
     permissions:
@@ -322,7 +355,7 @@ jobs:
             ref: docker.io/some/image:1.2.3@sha256:...
           - name: another-image
             ref: ghcr.io/some/other-image:4.5.6@sha256:...
-    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.10
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v1.0.0
     with:
       image_name: ${{ matrix.name }}
       image_ref: ${{ matrix.ref }}
@@ -370,7 +403,7 @@ on:
   workflow_dispatch:
 jobs:
   gitleaks:
-    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.11
+    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v1.0.0
     permissions:
       contents: read
 ```
@@ -398,6 +431,6 @@ on:
     types: [opened, edited, synchronize, reopened]
 jobs:
   rollout-ack:
-    uses: KandlerLi/gha-common/.github/workflows/rollout-ack.yml@v0.0.16
+    uses: KandlerLi/gha-common/.github/workflows/rollout-ack.yml@v1.0.0
     permissions: {}
 ```
