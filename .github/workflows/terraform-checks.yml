@@ -31,14 +31,12 @@ jobs:
       contents: read
       packages: write
 
+  # One job for validate and plan: each extra job costs a Pod start, a container init and a cold terraform init (tracker #52).
   validate:
     name: Validate
     needs: build-image
     runs-on: [self-hosted, home, debian]
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      packages: read
+    timeout-minutes: 20
     container:
       image: ${{ needs.build-image.outputs.image }}
       credentials:
@@ -48,8 +46,20 @@ jobs:
       options: >-
         --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
         -v /terraform-plugin-cache:/terraform-plugin-cache
+    permissions:
+      contents: read
+      # Plan role trusts only pull_request subjects, so a dispatch run can't use this: see README.
+      id-token: write
+      packages: read
+      # For the PR comment step; callers must grant it too.
+      pull-requests: write
     env:
+      AWS_REGION: ${{ inputs.aws_region }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
       TF_PLUGIN_CACHE_DIR: /terraform-plugin-cache
+      # Plan only for PRs from this repository, never forks.
+      PLAN: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
 
     steps:
       - name: Check out repository
@@ -68,43 +78,8 @@ jobs:
         if: inputs.extra_validate_command != ''
         run: ${{ inputs.extra_validate_command }}
 
-      - name: Fix workspace permissions for the next job
-        if: always()
-        run: chmod -R a+rwX "$GITHUB_WORKSPACE"
-
-  plan:
-    name: Terraform plan
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    needs: [build-image, validate]
-    runs-on: [self-hosted, home, debian]
-    timeout-minutes: 15
-    container:
-      image: ${{ needs.build-image.outputs.image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: >-
-        --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
-        -v /terraform-plugin-cache:/terraform-plugin-cache
-    permissions:
-      contents: read
-      id-token: write
-      packages: read
-      # For the PR comment step; callers must grant it too.
-      pull-requests: write
-    env:
-      AWS_REGION: ${{ inputs.aws_region }}
-      TF_IN_AUTOMATION: "true"
-      TF_INPUT: "false"
-      TF_PLUGIN_CACHE_DIR: /terraform-plugin-cache
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Verify plan configuration
+        if: env.PLAN == 'true'
         env:
           AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
@@ -120,7 +95,7 @@ jobs:
 
       # Only for ci/export-repo-vars.sh; ref bumped by hand like build-ci-image.yml's.
       - name: Check out gha-common
-        if: inputs.extra_repo_vars != ''
+        if: env.PLAN == 'true' && inputs.extra_repo_vars != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: KandlerLi/gha-common
@@ -128,12 +103,13 @@ jobs:
           path: gha-common
 
       - name: Export and verify extra repository variables
-        if: inputs.extra_repo_vars != ''
+        if: env.PLAN == 'true' && inputs.extra_repo_vars != ''
         env:
           ALL_VARS_JSON: ${{ toJSON(vars) }}
         run: gha-common/ci/export-repo-vars.sh ${{ inputs.extra_repo_vars }}
 
       - name: Configure read-only AWS credentials
+        if: env.PLAN == 'true'
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           aws-region: ${{ env.AWS_REGION }}
@@ -144,14 +120,17 @@ jobs:
           action-timeout-s: "90"
 
       - name: Initialize Terraform
+        if: env.PLAN == 'true'
         run: terraform init -input=false
 
       - name: Create speculative plan
+        if: env.PLAN == 'true'
         run: |
           set -o pipefail
           terraform plan -input=false -lock=false -no-color | tee plan_output.txt
 
       - name: Post plan to pull request
+        if: env.PLAN == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |

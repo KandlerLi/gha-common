@@ -113,6 +113,15 @@ optional extra command), then a speculative `terraform plan` using
 read-only, short-lived AWS credentials — only for PRs from the repo itself,
 never forks.
 
+Validate and plan run as one job, `Validate`: each extra job cost a runner
+Pod start, a container init and a cold `terraform init`, ~3 min per PR
+(tracker #52). So that job holds `id-token: write` on every event, also on
+`workflow_dispatch`, while only the plan steps use it. Nothing more is
+reachable that way: the plan role trusts only the `pull_request` subject and
+the apply role only `environment:production` (`repo-infra`'s
+`modules/repo`), and fork PRs get no OIDC token and are never approved here.
+The required check is just `terraform / Validate`; a failed plan fails it.
+
 Both this workflow and `terraform-apply.yml` set `action-timeout-s: "90"`
 on the AWS credentials step: on a self-hosted runner with a container
 job, `aws-actions/configure-aws-credentials#1305` otherwise hangs for
@@ -122,7 +131,7 @@ about 15 minutes (see
 inside the shell script, after the shell-level version hit an
 empty-then-block syntax error (also in `decisions.md`).
 
-Both the `validate` and `plan` jobs bind-mount `/terraform-plugin-cache`
+The `validate` job bind-mounts `/terraform-plugin-cache`
 from the self-hosted runner's own host into the container job and set
 `TF_PLUGIN_CACHE_DIR` to it, so `terraform init` reuses providers already
 downloaded on this node instead of fetching them cold on every ephemeral
@@ -140,7 +149,7 @@ Inputs:
 | `extra_repo_vars` | no | Space-separated repository variable names (e.g. `"ROUTE53_ZONE_ID ALERT_EMAIL"`) that must be set and get exported as `TF_VAR_<lowercased_name>`. Covers whatever named variables that repo's own Terraform needs, without ever having to edit this shared workflow. |
 | `extra_validate_command` | no | Extra shell command run in the validate job (e.g. a repo's own unit test suite). |
 
-The `plan` job also posts (or updates, on repeat pushes to the same PR)
+On PRs, the job also posts (or updates, on repeat pushes to the same PR)
 a single comment with the plan's own output, wrapped in a `diff` fence
 so GitHub's Markdown renderer colors the `+`/`-` lines -- the closest a
 PR comment can get to `terraform plan`'s colored-terminal output
@@ -167,11 +176,11 @@ jobs:
       # A caller's job-level permissions cap every nested job inside the
       # reusable workflow -- must cover the union of what any of them
       # ask for. build-image needs write (it pushes to GHCR); the
-      # narrower validate/plan jobs still only get what they themselves
-      # request internally. packages: read here fails with "requesting
+      # narrower validate job still only gets what it requests
+      # internally. packages: read here fails with "requesting
       # 'packages: write', but is only allowed 'packages: read'".
       packages: write
-      # plan's own "Post plan to pull request" comment step needs this.
+      # The "Post plan to pull request" step needs this.
       pull-requests: write
 ```
 
