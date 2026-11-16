@@ -93,13 +93,13 @@ jobs:
             exit 1
           fi
 
-      # Only for ci/export-repo-vars.sh; ref bumped by hand like build-ci-image.yml's.
+      # Only for ci/export-repo-vars.sh, at this workflow's own commit like build-ci-image.yml's.
       - name: Check out gha-common
         if: env.PLAN == 'true' && inputs.extra_repo_vars != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: KandlerLi/gha-common
-          ref: v0.0.7
+          ref: ${{ job.workflow_sha }}
           path: gha-common
 
       - name: Export and verify extra repository variables

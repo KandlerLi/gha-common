@@ -29,12 +29,12 @@ jobs:
       gid: ${{ steps.whoami.outputs.gid }}
 
     steps:
-      # Only for the Dockerfile; ref bumped by hand with each new tag, see README.
+      # Only for the Dockerfile, at this workflow's own commit (job.workflow_sha), so ci/ matches the caller's pin.
       - name: Check out gha-common
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: KandlerLi/gha-common
-          ref: v0.0.7
+          ref: ${{ job.workflow_sha }}
           path: gha-common
 
       # ci/'s tree hash plus the ISO week: rebuilt when ci/ changes, and weekly for Debian's security updates.
