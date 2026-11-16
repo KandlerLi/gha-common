@@ -25,6 +25,13 @@ on:
           any finding of these severities that has a fix. Empty: never fails.
         type: string
         default: ""
+      trivyignores:
+        description: >-
+          Path to a trivy ignore file in the caller's repository (e.g.
+          .trivyignore.yaml). Applies only to fail_on_severity; the report
+          still lists every finding.
+        type: string
+        default: ""
 
 jobs:
   trivy-image:
@@ -58,6 +65,14 @@ jobs:
           echo "### ${{ inputs.image_name }} (\`${{ inputs.image_ref }}\`)" >> "$GITHUB_STEP_SUMMARY"
           cat trivy-image-report.txt >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Check out the ignore file
+        if: inputs.fail_on_severity != '' && inputs.trivyignores != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: ${{ inputs.trivyignores }}
+          sparse-checkout-cone-mode: false
+
       - name: Fail on fixable findings
         if: inputs.fail_on_severity != ''
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -67,5 +82,6 @@ jobs:
           scanners: vuln
           severity: ${{ inputs.fail_on_severity }}
           ignore-unfixed: true
+          trivyignores: ${{ inputs.trivyignores }}
           format: table
           exit-code: "1"
