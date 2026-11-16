@@ -115,9 +115,10 @@ When the runner exports `GHCR_CACHE` (the home runners do, see
 pull-through cache instead: `<GHCR_CACHE>/kandlerli/<repo>-ci:<tag>`.
 dockerd's `registry-mirrors` covers only Docker Hub, so the reference
 itself has to change. The push still goes to GHCR. The cache serves
-anonymously, so `terraform-checks.yml`/`terraform-apply.yml` pass
-container credentials only for a `ghcr.io/` image; empty ones skip the
-login. Without `GHCR_CACHE` nothing changes.
+anonymously. The container credentials stay as they are: GitHub rejects
+empty ones when it validates the workflow, and docker sends credentials
+only after a 401 challenge, which the cache never issues. Without
+`GHCR_CACHE` nothing changes.
 
 ## `.github/workflows/build-ci-image.yml`
 

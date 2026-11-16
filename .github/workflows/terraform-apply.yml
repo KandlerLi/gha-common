@@ -46,10 +46,10 @@ jobs:
     environment: production
     container:
       image: ${{ needs.build-image.outputs.image }}
-      # Only GHCR needs them; the registry cache serves anonymously (empty credentials skip the login).
+      # For GHCR; the registry cache needs none, and docker sends them only when a registry asks (401).
       credentials:
-        username: ${{ startsWith(needs.build-image.outputs.image, 'ghcr.io/') && github.actor || '' }}
-        password: ${{ startsWith(needs.build-image.outputs.image, 'ghcr.io/') && secrets.GITHUB_TOKEN || '' }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
       # Provider plugin cache from the runner host: see README.
       options: >-
         --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
