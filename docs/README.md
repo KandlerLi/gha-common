@@ -333,10 +333,9 @@ step: the job summary still lists the finding.
 
 Logs in to GHCR with the caller's own `GITHUB_TOKEN` before scanning
 (harmless for a non-GHCR `image_ref`) -- needed for a private package like
-this account's own `home-agent`/`sankey-export` images, since trivy has no
+this account's own `sankey-export` image, since trivy has no
 separate registry-auth input and instead reads the runner's own Docker
-config the same way `checks.yml`/`build-home-agent.yml` already do to
-push. Requires the caller to grant `packages: read`, not just
+config. Requires the caller to grant `packages: read`, not just
 `contents: read`.
 
 Inputs:
