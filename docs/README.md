@@ -110,6 +110,15 @@ and once a week, which picks up Debian's security updates from
 `apt-get`; every other run reuses it, which keeps the homeserver's
 disk load down (tracker #12). Later jobs run in the `image` output.
 
+When the runner exports `GHCR_CACHE` (the home runners do, see
+`k3s-bootstrap`'s README, "Registry cache"), `image` points at that
+pull-through cache instead: `<GHCR_CACHE>/kandlerli/<repo>-ci:<tag>`.
+dockerd's `registry-mirrors` covers only Docker Hub, so the reference
+itself has to change. The push still goes to GHCR. The cache serves
+anonymously, so `terraform-checks.yml`/`terraform-apply.yml` pass
+container credentials only for a `ghcr.io/` image; empty ones skip the
+login. Without `GHCR_CACHE` nothing changes.
+
 ## `.github/workflows/build-ci-image.yml`
 
 Nested reusable workflow (extracted 2026-09-22, ponytail-audit):

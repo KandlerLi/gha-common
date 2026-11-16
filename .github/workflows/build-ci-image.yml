@@ -6,7 +6,7 @@ on:
   workflow_call:
     outputs:
       image:
-        description: The CI image reference to run later jobs in.
+        description: The CI image reference to run later jobs in; on the registry cache when the runner offers one.
         value: ${{ jobs.build-image.outputs.image }}
       uid:
         description: Numeric uid of the container's own service account, for --user options in later jobs.
@@ -38,11 +38,17 @@ jobs:
           path: gha-common
 
       # ci/'s tree hash plus the ISO week: rebuilt when ci/ changes, and weekly for Debian's security updates.
+      # Later jobs pull through the runner's registry cache when it offers one (GHCR_CACHE): see README.
       - name: Determine image tag
         id: tag
-        run: >-
-          echo "image=ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:$(git -C gha-common rev-parse --short=12 HEAD:ci)-$(date -u +%G-w%V)"
-          >> "$GITHUB_OUTPUT"
+        run: |
+          push="ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:$(git -C gha-common rev-parse --short=12 HEAD:ci)-$(date -u +%G-w%V)"
+          echo "push=${push}" >> "$GITHUB_OUTPUT"
+          if [ -n "${GHCR_CACHE:-}" ]; then
+            echo "image=${GHCR_CACHE}/${push#ghcr.io/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${push}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Log in to GHCR
         run: >-
@@ -52,17 +58,17 @@ jobs:
       - name: Check for an existing image
         id: existing
         run: |
-          if docker manifest inspect "${{ steps.tag.outputs.image }}" >/dev/null 2>&1; then
+          if docker manifest inspect "${{ steps.tag.outputs.push }}" >/dev/null 2>&1; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build CI image
         if: steps.existing.outputs.found != 'true'
-        run: docker build -t "${{ steps.tag.outputs.image }}" gha-common/ci
+        run: docker build -t "${{ steps.tag.outputs.push }}" gha-common/ci
 
       - name: Push CI image
         if: steps.existing.outputs.found != 'true'
-        run: docker push "${{ steps.tag.outputs.image }}"
+        run: docker push "${{ steps.tag.outputs.push }}"
 
       - name: Determine service account identity
         id: whoami
