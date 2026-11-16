@@ -101,8 +101,10 @@ Terraform plus the handful of extra tools every caller's workflows need
 picks up a surprise toolchain change. Built by `build-ci-image.yml`'s
 own `build-image` job, which both reusable workflows below call, as
 `ghcr.io/kandlerli/<calling-repo-name>-ci:<ci tree hash>-<ISO week>`.
-The job checks out this repo (just for `ci/`, at a hardcoded `ref:`
-bumped by hand alongside any new tag) and skips build and push when GHCR
+The job checks out this repo (just for `ci/`) at `job.workflow_sha`, the
+commit of the workflow file itself, so `ci/` always matches the tag the
+caller pins (until v1.1.0 it was a hardcoded `v0.0.7`, so later `ci/`
+changes never reached callers). It skips build and push when GHCR
 already has that tag. So the image is rebuilt only when `ci/` changes
 and once a week, which picks up Debian's security updates from
 `apt-get`; every other run reuses it, which keeps the homeserver's
@@ -119,8 +121,8 @@ container `options: --user` settings both callers' own later jobs use.
 Called via a relative path (`uses: ./.github/workflows/build-ci-image.yml`),
 which GitHub resolves against the same ref the outer reusable workflow was
 checked out at -- so bumping a caller's pin picks up this file's
-own content at that same tag automatically; only its own hardcoded
-Dockerfile-checkout `ref:` needs a separate manual bump.
+own content at that same tag automatically, and `job.workflow_sha`
+carries the same commit into its `ci/` checkout.
 
 ## `ci/export-repo-vars.sh`
 
