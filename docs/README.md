@@ -325,6 +325,12 @@ it fails the job on a finding of that severity that has a fix
 (`ignore-unfixed`), so GitHub's failed-run email surfaces a new fixable CVE
 in an image that hasn't changed. Leave it empty on `pull_request`/`push`.
 
+`trivyignores` points at an ignore file in the caller's repository, for a
+finding that has a fix upstream but not yet in the image, and that was
+checked as unreachable. Give each entry a `statement` and an `expired_at`,
+so the job fails again once the date passes. It only affects the fail
+step: the job summary still lists the finding.
+
 Logs in to GHCR with the caller's own `GITHUB_TOKEN` before scanning
 (harmless for a non-GHCR `image_ref`) -- needed for a private package like
 this account's own `home-agent`/`sankey-export` images, since trivy has no
@@ -341,6 +347,7 @@ Inputs:
 | `image_ref` | yes | Full image reference, digest-pinned where the caller pins it. |
 | `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
 | `fail_on_severity` | no | Comma-separated severities, e.g. `CRITICAL`. Fails the job on a fixable finding of these severities. Defaults to `""` (never fails). |
+| `trivyignores` | no | Path to a trivy ignore file in the caller's repository, e.g. `.trivyignore.yaml`. Applies only to `fail_on_severity`. Defaults to `""`. Since v1.1.0. |
 
 Caller shape (one job per image, via a matrix):
 
@@ -355,7 +362,7 @@ jobs:
             ref: docker.io/some/image:1.2.3@sha256:...
           - name: another-image
             ref: ghcr.io/some/other-image:4.5.6@sha256:...
-    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v1.0.0
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v1.1.0
     with:
       image_name: ${{ matrix.name }}
       image_ref: ${{ matrix.ref }}
