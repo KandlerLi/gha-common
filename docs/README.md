@@ -10,9 +10,7 @@ call `trivy-config.yml`/`trivy-image.yml`/`gitleaks.yml`, none of which has
 a Terraform dependency).
 
 `trivy-config.yml` is additionally called by `repo-infra`, `terraform-state`,
-and `k3s-bootstrap` -- the three repos that otherwise have no CI/self-hosted
-runner at all -- with `runs_on` overridden to a GitHub-hosted runner, so
-adopting it doesn't require provisioning a self-hosted runner for them. See
+and `k3s-bootstrap`, the three repos that otherwise have no CI at all. See
 [`home-infra-docs/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/adr/0022-trivy-config-scanning-and-public-repo-tradeoff.md)
 for the full rollout.
 
@@ -27,12 +25,22 @@ secrets scan has no reason to exclude any repo by content type.
 This repo has no build/apply CI of its own (no `runner: true`/
 `action_variables`/`required_status_check_contexts` entry in
 [`repo-infra/config.yml`](https://github.com/KandlerLi/repo-infra/blob/main/config.yml)) — a caller's `uses:` job runs under that
-caller's own repository context (its own self-hosted runner
-registration, its own `vars.*`/`secrets.*`), the reusable workflow file
+caller's own repository context (its own `vars.*`/`secrets.*`), the reusable workflow file
 just supplies the shared YAML. It does still call its own `gitleaks.yml`
 on itself (`.github/workflows/security-scan.yml`) -- that reasoning
 doesn't apply to a secrets scan, which needs no build/apply pipeline to
 make sense, and this repo is public like every other repo in the audit.
+
+## Runners
+
+Since v2.0.0 every job runs on a GitHub-hosted runner (`ubuntu-latest`):
+none of them needs the home network, every caller is public, so hosted
+minutes are free, and the self-hosted runners no longer need Docker
+(privileged `dind`) for them. `trivy-config.yml`,
+`trivy-image.yml` and `gitleaks.yml` still take a `runs_on` input; the
+Terraform workflows don't. Until v1.2.0, `build-ci-image.yml`,
+`terraform-checks.yml` and `terraform-apply.yml` ran on the self-hosted
+runners, with a provider plugin cache and a GHCR pull-through cache there.
 
 ## Why this repo is public
 
@@ -107,18 +115,7 @@ caller pins (until v1.1.0 it was a hardcoded `v0.0.7`, so later `ci/`
 changes never reached callers). It skips build and push when GHCR
 already has that tag. So the image is rebuilt only when `ci/` changes
 and once a week, which picks up Debian's security updates from
-`apt-get`; every other run reuses it, which keeps the homeserver's
-disk load down (tracker #12). Later jobs run in the `image` output.
-
-When the runner exports `GHCR_CACHE` (the home runners do, see
-`k3s-bootstrap`'s README, "Registry cache"), `image` points at that
-pull-through cache instead: `<GHCR_CACHE>/kandlerli/<repo>-ci:<tag>`.
-dockerd's `registry-mirrors` covers only Docker Hub, so the reference
-itself has to change. The push still goes to GHCR. The cache serves
-anonymously. The container credentials stay as they are: GitHub rejects
-empty ones when it validates the workflow, and docker sends credentials
-only after a 401 challenge, which the cache never issues. Without
-`GHCR_CACHE` nothing changes.
+`apt-get`; every other run reuses it. Later jobs run in the `image` output.
 
 ## `.github/workflows/build-ci-image.yml`
 
@@ -158,9 +155,8 @@ optional extra command), then a speculative `terraform plan` using
 read-only, short-lived AWS credentials — only for PRs from the repo itself,
 never forks.
 
-Validate and plan run as one job, `Validate`: each extra job cost a runner
-Pod start, a container init and a cold `terraform init`, ~3 min per PR
-(tracker #52). So that job holds `id-token: write` on every event, also on
+Validate and plan run as one job, `Validate`: each extra job costs a runner
+start, a container init and a cold `terraform init` (tracker #52). So that job holds `id-token: write` on every event, also on
 `workflow_dispatch`, while only the plan steps use it. Nothing more is
 reachable that way: the plan role trusts only the `pull_request` subject and
 the apply role only `environment:production` (`repo-infra`'s
@@ -168,23 +164,13 @@ the apply role only `environment:production` (`repo-infra`'s
 The required check is just `terraform / Validate`; a failed plan fails it.
 
 Both this workflow and `terraform-apply.yml` set `action-timeout-s: "90"`
-on the AWS credentials step: on a self-hosted runner with a container
-job, `aws-actions/configure-aws-credentials#1305` otherwise hangs for
-about 15 minutes (see
+on the AWS credentials step: on the former self-hosted runners, a container
+job hit `aws-actions/configure-aws-credentials#1305` and hung for about
+15 minutes. Kept as a cheap upper bound (see
 [`home-infra-docs`' `decisions.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/decisions.md)).
 `extra_validate_command` runs behind a step-level `if:`, not a check
 inside the shell script, after the shell-level version hit an
 empty-then-block syntax error (also in `decisions.md`).
-
-The `validate` job bind-mounts `/terraform-plugin-cache`
-from the self-hosted runner's own host into the container job and set
-`TF_PLUGIN_CACHE_DIR` to it, so `terraform init` reuses providers already
-downloaded on this node instead of fetching them cold on every ephemeral
-runner Pod. This assumes that path exists on the runner host — provisioned
-by `k3s-bootstrap`'s `modules/github_runner`, not by this repo — so this
-workflow only ever runs correctly against that self-hosted runner, never a
-`runs_on`-overridden GitHub-hosted one (not offered as an input here for
-that reason).
 
 Inputs:
 
@@ -284,27 +270,9 @@ Inputs:
 
 | Input | Required | Description |
 | --- | --- | --- |
-| `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`). |
 
-Caller shape (typical — self-hosted runner, one of the repos that already
-has one registered):
-
-```yaml
-name: Security scan
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-jobs:
-  trivy-config:
-    uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v1.0.0
-    permissions:
-      contents: read
-```
-
-Caller shape (`repo-infra`/`terraform-state`/`k3s-bootstrap` — no
-self-hosted runner registered for these, deliberately not provisioning one
-just for a read-only scan):
+Caller shape:
 
 ```yaml
 name: Security scan
@@ -315,8 +283,6 @@ on:
 jobs:
   trivy-config:
     uses: KandlerLi/gha-common/.github/workflows/trivy-config.yml@v1.0.0
-    with:
-      runs_on: '["ubuntu-latest"]'
     permissions:
       contents: read
 ```
@@ -356,7 +322,7 @@ Inputs:
 | --- | --- | --- |
 | `image_name` | yes | Short label for the image, shown in the job name and job summary. |
 | `image_ref` | yes | Full image reference, digest-pinned where the caller pins it. |
-| `runs_on` | no | JSON array of runner labels, e.g. `'["ubuntu-latest"]'`. Defaults to this workspace's usual self-hosted runner (`'["self-hosted", "home", "debian"]'`). |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`). |
 | `fail_on_severity` | no | Comma-separated severities, e.g. `CRITICAL`. Fails the job on a fixable finding of these severities. Defaults to `""` (never fails). |
 | `trivyignores` | no | Path to a trivy ignore file in the caller's repository, e.g. `.trivyignore.yaml`. Applies only to `fail_on_severity`. Defaults to `""`. Since v1.1.0. |
 
@@ -407,7 +373,7 @@ Inputs:
 
 | Input | Required | Description |
 | --- | --- | --- |
-| `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`) -- unlike the two workflows above, there's no reason to ever run this on the self-hosted runner (no AWS credentials, no in-cluster access, no local network at all). |
+| `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`). |
 | `gitleaks_version` | no | Pinned gitleaks release version, without the `v` prefix. Defaults to `"8.30.1"`. |
 
 Caller shape:
