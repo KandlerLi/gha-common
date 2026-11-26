@@ -9,7 +9,7 @@ on:
         description: >-
           JSON array of runner labels, e.g.
           '["self-hosted", "home", "debian"]'. Defaults to a GitHub-hosted
-          runner -- see this file's own header comment for why.
+          runner.
         type: string
         default: '["ubuntu-latest"]'
       gitleaks_version:

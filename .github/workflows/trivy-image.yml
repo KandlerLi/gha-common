@@ -15,10 +15,10 @@ on:
         required: true
       runs_on:
         description: >-
-          JSON array of runner labels, e.g. '["ubuntu-latest"]'. Defaults to
-          this workspace's usual self-hosted runner.
+          JSON array of runner labels, e.g. '["self-hosted", "home", "debian"]'.
+          Defaults to a GitHub-hosted runner.
         type: string
-        default: '["self-hosted", "home", "debian"]'
+        default: '["ubuntu-latest"]'
       fail_on_severity:
         description: >-
           Comma-separated severities, e.g. CRITICAL. If set, the job fails on

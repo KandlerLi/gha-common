@@ -35,18 +35,14 @@ jobs:
   validate:
     name: Validate
     needs: build-image
-    runs-on: [self-hosted, home, debian]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
       image: ${{ needs.build-image.outputs.image }}
-      # For GHCR; the registry cache needs none, and docker sends them only when a registry asks (401).
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      # Provider plugin cache from the runner host: see README.
-      options: >-
-        --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
-        -v /terraform-plugin-cache:/terraform-plugin-cache
+      options: --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
     permissions:
       contents: read
       # Plan role trusts only pull_request subjects, so a dispatch run can't use this: see README.
@@ -58,7 +54,6 @@ jobs:
       AWS_REGION: ${{ inputs.aws_region }}
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
-      TF_PLUGIN_CACHE_DIR: /terraform-plugin-cache
       # Plan only for PRs from this repository, never forks.
       PLAN: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
 

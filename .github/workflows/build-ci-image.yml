@@ -6,7 +6,7 @@ on:
   workflow_call:
     outputs:
       image:
-        description: The CI image reference to run later jobs in; on the registry cache when the runner offers one.
+        description: The CI image reference to run later jobs in.
         value: ${{ jobs.build-image.outputs.image }}
       uid:
         description: Numeric uid of the container's own service account, for --user options in later jobs.
@@ -18,7 +18,7 @@ on:
 jobs:
   build-image:
     name: Build CI image
-    runs-on: [self-hosted, home, debian]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
@@ -38,17 +38,12 @@ jobs:
           path: gha-common
 
       # ci/'s tree hash plus the ISO week: rebuilt when ci/ changes, and weekly for Debian's security updates.
-      # Later jobs pull through the runner's registry cache when it offers one (GHCR_CACHE): see README.
       - name: Determine image tag
         id: tag
         run: |
           push="ghcr.io/kandlerli/${{ github.event.repository.name }}-ci:$(git -C gha-common rev-parse --short=12 HEAD:ci)-$(date -u +%G-w%V)"
           echo "push=${push}" >> "$GITHUB_OUTPUT"
-          if [ -n "${GHCR_CACHE:-}" ]; then
-            echo "image=${GHCR_CACHE}/${push#ghcr.io/}" >> "$GITHUB_OUTPUT"
-          else
-            echo "image=${push}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "image=${push}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         run: >-
