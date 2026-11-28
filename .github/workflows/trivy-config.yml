@@ -11,6 +11,13 @@ on:
           Defaults to a GitHub-hosted runner.
         type: string
         default: '["ubuntu-latest"]'
+      trivyignores:
+        description: >-
+          Path to a trivy ignore file in the caller's repository (e.g.
+          .trivyignore.yaml), for findings that are by design. Scope each
+          entry with paths, a statement and expired_at.
+        type: string
+        default: ""
 
 jobs:
   trivy-config:
@@ -32,6 +39,7 @@ jobs:
           format: table
           output: trivy-config-report.txt
           exit-code: "1"
+          trivyignores: ${{ inputs.trivyignores }}
 
       - name: Publish findings to job summary
         if: always()
