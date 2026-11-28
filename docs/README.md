@@ -271,6 +271,7 @@ Inputs:
 | Input | Required | Description |
 | --- | --- | --- |
 | `runs_on` | no | JSON array of runner labels, e.g. `'["self-hosted", "home", "debian"]'`. Defaults to a GitHub-hosted runner (`'["ubuntu-latest"]'`). |
+| `trivyignores` | no | Path to a trivy ignore file in the caller's repository, e.g. `.trivyignore.yaml`, for findings that are by design. Give each entry `paths`, a `statement` and an `expired_at`, so it stays narrow and comes back for review. Defaults to `""`. Since v2.1.0. |
 
 Caller shape:
 
